@@ -2,6 +2,7 @@
 name = "git-diff-out"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85.0"
 description = "Export common Git diffs to predictable patch files or stdout"
 license = "MIT"
 
