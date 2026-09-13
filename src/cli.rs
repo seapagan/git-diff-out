@@ -1,14 +1,29 @@
 use std::path::PathBuf;
 
 use clap::{Parser, error::ErrorKind};
+use colored_text::Colorize;
+
+const USAGE: &str = r#"gd [OPTIONS] [MODE]
+  gd [OPTIONS] {b|branch} [BASE]"#;
+
+const EXAMPLES: &str = r#"  gd                 Write unstaged tracked changes to diff.patch
+  gd s               Write staged tracked changes to staged.patch
+  gd 3               Write the last 3 commits to last-3-commits.patch
+  gd b               Write current-branch changes relative to the detected base
+  gd b develop       Write current-branch changes relative to develop
+  gd s -p            Write the staged diff to stdout"#;
+
+fn after_help() -> String {
+    format!("{}\n{EXAMPLES}", "Examples:".bold().underline())
+}
 
 #[derive(Debug, Parser)]
 #[command(
     name = "gd",
     version,
     about,
-    override_usage = "\n  gd [OPTIONS] [MODE]\n  gd [OPTIONS] {b|branch} [BASE]",
-    after_help = "Examples:\n  gd                 Write unstaged tracked changes to diff.patch\n  gd s               Write staged tracked changes to staged.patch\n  gd 3               Write the last 3 commits to last-3-commits.patch\n  gd b               Write current-branch changes relative to the detected base\n  gd b develop       Write current-branch changes relative to develop\n  gd s -p            Write the staged diff to stdout"
+    override_usage = USAGE,
+    after_help = after_help()
 )]
 pub struct Cli {
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
@@ -116,4 +131,37 @@ fn value_error(value: &str) -> clap::Error {
         ErrorKind::InvalidValue,
         format!("invalid mode or commit count '{value}'"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env, process::Command};
+
+    use clap::CommandFactory;
+    use colored_text::{ColorMode, ColorizeConfig};
+
+    use super::Cli;
+
+    #[test]
+    fn examples_heading_is_bold_and_underlined_when_styling_is_forced() {
+        if env::var_os("NO_COLOR").is_some() {
+            let output = Command::new(env::current_exe().expect("test executable should exist"))
+                .args([
+                    "--exact",
+                    "cli::tests::examples_heading_is_bold_and_underlined_when_styling_is_forced",
+                ])
+                .env_remove("NO_COLOR")
+                .output()
+                .expect("style test should rerun without NO_COLOR");
+            assert!(output.status.success());
+            return;
+        }
+
+        let previous_mode = ColorizeConfig::color_mode();
+        ColorizeConfig::set_color_mode(ColorMode::Always);
+        let help = Cli::command().render_help().ansi().to_string();
+        ColorizeConfig::set_color_mode(previous_mode);
+
+        assert!(help.contains("\u{1b}[1;4mExamples:\u{1b}[0m"));
+    }
 }

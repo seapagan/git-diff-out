@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
 use clap::{CommandFactory, Parser};
 use git_diff_out::cli::{Cli, Mode, QuietOverride};
@@ -126,15 +126,30 @@ fn rejects_conflicting_flags() {
 fn help_describes_the_cli_grammar_and_generated_options() {
     let help = Cli::command().render_help().to_string();
 
-    assert!(help.contains("  gd [OPTIONS] [MODE]\n"));
+    assert!(help.contains("Usage: gd [OPTIONS] [MODE]\n"));
     assert!(help.contains("  gd [OPTIONS] {b|branch} [BASE]\n"));
     assert!(help.contains("[MODE]  Diff mode:"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));
     assert!(help.contains("Examples:"));
+    assert!(help.contains("gd                 Write unstaged tracked changes"));
+    assert!(help.contains("gd s               Write staged tracked changes"));
     assert!(help.contains("gd 3"));
     assert!(help.contains("gd b"));
     assert!(help.contains("gd b develop"));
     assert!(help.contains("gd s -p"));
     assert!(help.contains("current-branch changes relative to"));
+}
+
+#[test]
+fn captured_help_is_plain_text() {
+    let output = Command::new(env!("CARGO_BIN_EXE_gd"))
+        .arg("--help")
+        .output()
+        .expect("help should run");
+    let help = String::from_utf8(output.stdout).expect("help should be UTF-8");
+
+    assert!(output.status.success());
+    assert!(help.contains("Examples:"));
+    assert!(!help.contains('\u{1b}'));
 }
