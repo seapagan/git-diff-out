@@ -3,9 +3,15 @@ use std::path::PathBuf;
 use clap::{Parser, error::ErrorKind};
 
 #[derive(Debug, Parser)]
-#[command(name = "gd", version, about)]
+#[command(
+    name = "gd",
+    version,
+    about,
+    override_usage = "\n  gd [OPTIONS] [MODE]\n  gd [OPTIONS] {b|branch} [BASE]"
+)]
 pub struct Cli {
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
+    #[arg(value_name = "MODE")]
     mode_name: Option<String>,
 
     /// Base branch for branch mode.
@@ -24,7 +30,7 @@ pub struct Cli {
     quiet: bool,
 
     /// Override quiet mode configured in the config file.
-    #[arg(long, conflicts_with = "quiet")]
+    #[arg(short = 'v', long, conflicts_with = "quiet")]
     verbose: bool,
 }
 
@@ -69,22 +75,20 @@ impl Cli {
         let Some(name) = self.mode_name.as_deref() else {
             return Ok(Mode::Default);
         };
+        if self.base.is_some() && !matches!(name, "b" | "branch") {
+            return Err(base_error());
+        }
 
         let mode = match name {
             "u" | "unstaged" => Mode::Unstaged,
             "s" | "staged" => Mode::Staged,
             "a" | "all" => Mode::All,
             "b" | "branch" => Mode::Branch(self.base.clone()),
-            value if self.base.is_none() => match value.parse::<usize>() {
+            value => match value.parse::<usize>() {
                 Ok(count) if count > 0 => Mode::Commits(count),
                 _ => return Err(value_error(value)),
             },
-            _ => return Err(value_error(name)),
         };
-
-        if self.base.is_some() && !matches!(mode, Mode::Branch(_)) {
-            return Err(value_error(name));
-        }
         Ok(mode)
     }
 
@@ -97,6 +101,13 @@ impl Cli {
             QuietOverride::None
         }
     }
+}
+
+fn base_error() -> clap::Error {
+    clap::Error::raw(
+        ErrorKind::InvalidValue,
+        "BASE is only valid with branch mode",
+    )
 }
 
 fn value_error(value: &str) -> clap::Error {

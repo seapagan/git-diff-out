@@ -226,17 +226,15 @@ fn configured_quiet_and_verbose_precedence_control_messages() {
     app::run_in_with_writer(Cli::parse_from(["gd"]), environment(), &mut messages).unwrap();
     assert!(messages.is_empty());
 
-    app::run_in_with_writer(
-        Cli::parse_from(["gd", "--verbose"]),
-        environment(),
-        &mut messages,
-    )
-    .unwrap();
-    assert!(
-        String::from_utf8(messages)
-            .unwrap()
-            .starts_with("Wrote diff.patch (")
-    );
+    for flag in ["-v", "--verbose"] {
+        messages.clear();
+        app::run_in_with_writer(Cli::parse_from(["gd", flag]), environment(), &mut messages)
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&messages).starts_with("Wrote diff.patch ("),
+            "configured quiet mode was not overridden by {flag}"
+        );
+    }
 }
 
 #[test]

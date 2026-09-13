@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use git_diff_out::cli::{Cli, Mode, QuietOverride};
 
 fn parse(args: &[&str]) -> Cli {
@@ -39,6 +39,26 @@ fn parses_explicit_branch_base() {
         parse(&["gd", "branch", "master"]).mode().unwrap(),
         Mode::Branch(Some("master".into()))
     );
+}
+
+#[test]
+fn rejects_base_outside_branch_mode() {
+    for args in [
+        &["gd", "s", "main"][..],
+        &["gd", "staged", "develop"][..],
+        &["gd", "u", "master"][..],
+        &["gd", "a", "main"][..],
+        &["gd", "3", "develop"][..],
+    ] {
+        let error = Cli::try_parse_from(args)
+            .and_then(Cli::validated)
+            .expect_err("BASE outside branch mode should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("BASE is only valid with branch mode")
+        );
+    }
 }
 
 #[test]
@@ -81,8 +101,10 @@ fn parses_delivery_and_quiet_flags() {
     assert_eq!(cli.output_dir, Some(PathBuf::from("patch output")));
     assert_eq!(cli.quiet_override(), QuietOverride::Quiet);
 
-    let cli = parse(&["gd", "--verbose"]);
-    assert_eq!(cli.quiet_override(), QuietOverride::Verbose);
+    for flag in ["-v", "--verbose"] {
+        let cli = parse(&["gd", flag]);
+        assert_eq!(cli.quiet_override(), QuietOverride::Verbose);
+    }
 }
 
 #[test]
@@ -90,8 +112,23 @@ fn rejects_conflicting_flags() {
     for args in [
         &["gd", "-p", "-o", "out"][..],
         &["gd", "--stdout", "--output-dir", "out"][..],
+        &["gd", "-q", "-v"][..],
         &["gd", "--quiet", "--verbose"][..],
+        &["gd", "-q", "--verbose"][..],
+        &["gd", "--quiet", "-v"][..],
+        &["gd", "-vv"][..],
     ] {
         assert!(Cli::try_parse_from(args).is_err());
     }
+}
+
+#[test]
+fn help_describes_the_cli_grammar_and_generated_options() {
+    let help = Cli::command().render_help().to_string();
+
+    assert!(help.contains("  gd [OPTIONS] [MODE]\n"));
+    assert!(help.contains("  gd [OPTIONS] {b|branch} [BASE]\n"));
+    assert!(help.contains("[MODE]  Diff mode:"));
+    assert!(help.contains("-v, --verbose"));
+    assert!(help.contains("-V, --version"));
 }
