@@ -188,6 +188,7 @@ fn commit_and_branch_stdout_modes_match_git() {
         );
         assert!(output.stderr.is_empty());
     }
+    assert!(!repo.path().join("last-2-commits.patch").exists());
 }
 
 #[test]

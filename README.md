@@ -13,6 +13,7 @@ predictable patch files or raw stdout.
 | `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.patch`         |
 | `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch-diff.patch`         |
 | `gd b develop`         | Current-branch changes relative to `develop`         | `branch-diff.patch`         |
+| `gd 1`                 | Changes introduced by the last commit                | `last-commit.patch`         |
 | `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.patch`      |
 | `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output             |
 | `gd 3 -p \| grep TODO` | Last three commits filtered for `TODO`               | Standard output             |

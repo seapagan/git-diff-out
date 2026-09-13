@@ -88,8 +88,8 @@ fn generates_expected_filenames() {
         (Mode::Staged, "staged.patch"),
         (Mode::All, "uncommitted.patch"),
         (Mode::Branch(None), "branch-diff.patch"),
-        (Mode::Commits(1), "last-1-commit.patch"),
-        (Mode::Commits(4), "last-4-commits.patch"),
+        (Mode::Commits(1), "last-commit.patch"),
+        (Mode::Commits(10), "last-10-commits.patch"),
     ] {
         assert_eq!(mode.filename(), expected);
     }

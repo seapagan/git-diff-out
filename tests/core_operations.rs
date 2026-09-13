@@ -67,13 +67,18 @@ fn commit_counts_match_exact_git_ranges() {
     repo.write("history.txt", "two\n");
     repo.commit_all("two");
 
-    for (count, filename) in [("1", "last-1-commit.patch"), ("2", "last-2-commits.patch")] {
+    for (count, filename) in [("1", "last-commit.patch"), ("2", "last-2-commits.patch")] {
         let expected = repo
             .git(["diff", "--no-color", &format!("HEAD~{count}..HEAD")])
             .stdout;
         repo.gd_in(&[count]).unwrap();
         assert_eq!(patch(&repo, filename), expected);
     }
+    let single_count = 1;
+    let legacy_patch = repo
+        .path()
+        .join(format!("last-{single_count}-commit.patch"));
+    assert!(!legacy_patch.exists());
 }
 
 #[test]

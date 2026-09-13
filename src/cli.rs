@@ -68,7 +68,7 @@ impl Mode {
             Self::Staged => "staged.patch".into(),
             Self::All => "uncommitted.patch".into(),
             Self::Branch(_) => "branch-diff.patch".into(),
-            Self::Commits(1) => "last-1-commit.patch".into(),
+            Self::Commits(1) => "last-commit.patch".into(),
             Self::Commits(count) => format!("last-{count}-commits.patch"),
         }
     }
