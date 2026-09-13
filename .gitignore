@@ -1,0 +1,14 @@
+/target/
+*.patch
+packed-repo.xml
+packed-repo.xml.gz
+.bundlerepo.toml
+.changelog_generator.toml
+
+# AI stuff
+.codex/
+.claude/
+.agents/
+AGENTS.md
+CLAUDE.md
+.codegraph/
