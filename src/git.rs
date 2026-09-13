@@ -151,7 +151,8 @@ pub fn detect_base(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
         &local_branches,
     )
     .ok_or_else(|| {
-        "cannot determine a branch base; specify a base with 'gd branch <BASE>' or configure base_branch"
+        "cannot determine a branch base; no remote default or local main/master branch found\n    \
+         specify one with 'gd branch <BASE>' or configure base_branch"
             .into()
     })
 }

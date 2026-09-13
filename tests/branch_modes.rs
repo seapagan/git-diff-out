@@ -130,11 +130,33 @@ fn detached_head_can_use_local_main_fallback() {
 }
 
 #[test]
-fn missing_base_reports_actionable_error() {
-    let repo = feature_repo("develop");
-    let error = repo.gd_in(&["b"]).unwrap_err();
-    assert!(error.contains("specify a base"), "{error}");
-    assert!(error.contains("base_branch"), "{error}");
+fn sole_nonstandard_branch_reports_missing_detectable_base() {
+    let repo = Repo::new("feat/initial-cli");
+    repo.write("tracked.txt", "first\n");
+    repo.commit_all("first");
+    repo.write("tracked.txt", "second\n");
+    repo.commit_all("second");
+
+    assert_eq!(repo.git(["remote"]).stdout, b"");
+    assert_eq!(
+        repo.git(["branch", "--format=%(refname:short)"]).stdout,
+        b"feat/initial-cli\n"
+    );
+
+    let output = repo.gd(&["b"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(
+        stderr.contains("no remote default or local main/master branch found"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("specify one with 'gd branch <BASE>'"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("configure base_branch"), "{stderr}");
+    assert!(!repo.path().join("branch-diff.patch").exists());
 }
 
 #[test]
