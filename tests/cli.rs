@@ -1,6 +1,7 @@
-use std::{path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command};
 
 use clap::{CommandFactory, Parser};
+use colored_text::{ColorMode, ColorizeConfig};
 use git_diff_out::cli::{Cli, Mode, QuietOverride};
 
 fn parse(args: &[&str]) -> Cli {
@@ -154,6 +155,29 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("gd b develop"));
     assert!(help.contains("gd s -p"));
     assert!(help.contains("current-branch changes relative to"));
+}
+
+#[test]
+fn examples_heading_is_bold_and_underlined_when_styling_is_forced() {
+    if env::var_os("NO_COLOR").is_some() {
+        let output = Command::new(env::current_exe().expect("test executable should exist"))
+            .args([
+                "--exact",
+                "examples_heading_is_bold_and_underlined_when_styling_is_forced",
+            ])
+            .env_remove("NO_COLOR")
+            .output()
+            .expect("style test should rerun without NO_COLOR");
+        assert!(output.status.success());
+        return;
+    }
+
+    let previous_mode = ColorizeConfig::color_mode();
+    ColorizeConfig::set_color_mode(ColorMode::Always);
+    let help = Cli::command().render_help().ansi().to_string();
+    ColorizeConfig::set_color_mode(previous_mode);
+
+    assert!(help.contains("\u{1b}[1;4mExamples:\u{1b}[0m"));
 }
 
 #[test]
