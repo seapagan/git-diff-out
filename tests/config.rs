@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use clap::Parser;
 use git_diff_out::{
     cli::Cli,
-    config::{Config, EffectiveConfig},
+    config::{Config, ConfigError, EffectiveConfig},
 };
 use tempfile::tempdir;
 
@@ -41,6 +41,26 @@ fn rejects_unknown_config_values() {
 
     let error = Config::load(&path).unwrap_err().to_string();
     assert!(error.contains("context_lines"), "{error}");
+}
+
+#[test]
+fn config_read_errors_include_the_path_and_cause() {
+    let temp = tempdir().unwrap();
+    let error = Config::load(temp.path()).unwrap_err().to_string();
+
+    assert!(error.contains("cannot read config"), "{error}");
+    assert!(
+        error.contains(&temp.path().display().to_string()),
+        "{error}"
+    );
+}
+
+#[test]
+fn missing_config_directory_error_is_actionable() {
+    assert_eq!(
+        ConfigError::NoConfigDirectory.to_string(),
+        "cannot determine the config directory"
+    );
 }
 
 #[test]

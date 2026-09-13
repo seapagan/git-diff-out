@@ -81,6 +81,21 @@ fn rejects_zero_invalid_modes_and_extra_arguments() {
 }
 
 #[test]
+fn binary_reports_application_mode_validation_errors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_gd"))
+        .arg("wat")
+        .output()
+        .expect("gd should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr.contains("invalid mode or commit count 'wat'"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn generates_expected_filenames() {
     for (mode, expected) in [
         (Mode::Default, "diff.patch"),

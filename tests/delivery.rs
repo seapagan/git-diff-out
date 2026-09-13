@@ -1,9 +1,14 @@
 mod common;
+#[cfg(unix)]
+#[path = "support/fake_program.rs"]
+mod fake_program;
 
-use std::{ffi::OsString, fs};
+use std::{ffi::OsString, fs, io};
 
 use clap::Parser;
 use common::{Repo, assert_success, gd_command, patch};
+#[cfg(unix)]
+use fake_program::executable_script;
 use git_diff_out::{app, cli::Cli};
 use tempfile::tempdir;
 
@@ -40,6 +45,34 @@ fn absolute_output_directory_is_supported() {
 }
 
 #[test]
+fn output_directory_creation_error_preserves_the_blocking_file() {
+    let repo = changed_repo();
+    repo.write("blocked", "keep me\n");
+
+    let error = repo.gd_in(&["--output-dir", "blocked"]).unwrap_err();
+
+    assert!(error.contains("cannot create output directory"), "{error}");
+    assert_eq!(fs::read(repo.path().join("blocked")).unwrap(), b"keep me\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn temporary_patch_creation_error_names_the_output_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = changed_repo();
+    let output_dir = repo.path().join("read-only");
+    fs::create_dir(&output_dir).unwrap();
+    fs::set_permissions(&output_dir, fs::Permissions::from_mode(0o500)).unwrap();
+
+    let error = repo.gd_in(&["--output-dir", "read-only"]).unwrap_err();
+
+    fs::set_permissions(&output_dir, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(error.contains("cannot create temporary patch"), "{error}");
+    assert!(error.contains(&output_dir.display().to_string()), "{error}");
+}
+
+#[test]
 fn completed_diff_replaces_an_existing_patch() {
     let repo = changed_repo();
     repo.write("diff.patch", "stale\n");
@@ -60,6 +93,32 @@ fn successful_empty_diff_removes_stale_patch_and_reports_status() {
     let messages = repo.gd_in(&["s"]).unwrap();
     assert_eq!(messages, b"No staged changes.\n");
     assert!(!repo.path().join("staged.patch").exists());
+}
+
+#[test]
+fn stale_patch_removal_error_preserves_the_destination_directory() {
+    let repo = Repo::new("main");
+    repo.write("tracked.txt", "unchanged\n");
+    repo.commit_all("initial");
+    let destination = repo.path().join("diff.patch");
+    fs::create_dir(&destination).unwrap();
+
+    let error = repo.gd_in(&[]).unwrap_err();
+
+    assert!(error.contains("cannot remove stale patch"), "{error}");
+    assert!(destination.is_dir());
+}
+
+#[test]
+fn patch_persistence_error_preserves_the_destination_directory() {
+    let repo = changed_repo();
+    let destination = repo.path().join("diff.patch");
+    fs::create_dir(&destination).unwrap();
+
+    let error = repo.gd_in(&[]).unwrap_err();
+
+    assert!(error.contains("cannot replace patch"), "{error}");
+    assert!(destination.is_dir());
 }
 
 #[test]
@@ -101,6 +160,26 @@ fn zero_untracked_files_keep_the_short_empty_message() {
     repo.commit_all("initial");
 
     assert_eq!(repo.gd_in(&[]).unwrap(), b"No unstaged changes.\n");
+}
+
+#[test]
+fn empty_modes_report_their_specific_status() {
+    let repo = Repo::new("main");
+    repo.write("tracked.txt", "unchanged\n");
+    repo.commit_all("initial");
+    repo.git(["switch", "-c", "feature"]);
+    repo.git(["commit", "--allow-empty", "-m", "empty one"]);
+    repo.git(["commit", "--allow-empty", "-m", "empty two"]);
+
+    for (args, expected) in [
+        (&["staged"][..], "No staged changes.\n"),
+        (&["all"][..], "No uncommitted changes.\n"),
+        (&["branch", "main"][..], "No branch changes.\n"),
+        (&["1"][..], "No changes in the last commit.\n"),
+        (&["2"][..], "No changes in the last 2 commits.\n"),
+    ] {
+        assert_eq!(repo.gd_in(args).unwrap(), expected.as_bytes());
+    }
 }
 
 #[test]
@@ -340,6 +419,96 @@ fn unavailable_git_executable_is_actionable() {
 }
 
 #[test]
+fn unavailable_git_executable_is_actionable_for_stdout() {
+    let repo = changed_repo();
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: OsString::from("git-executable-that-does-not-exist"),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("failed to start git"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn untracked_count_startup_failure_is_reported() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("untracked-startup-fails");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("failed to start git"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn untracked_count_command_failure_is_reported() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("untracked-command-fails");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("git ls-files failed with"), "{error}");
+}
+
+struct FailingWriter;
+
+impl io::Write for FailingWriter {
+    fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+        Err(io::Error::other("message sink failed"))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn message_write_failure_does_not_discard_the_completed_patch() {
+    let repo = changed_repo();
+
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: OsString::from("git"),
+        },
+        &mut FailingWriter,
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(error, "message sink failed");
+    assert!(repo.path().join("diff.patch").is_file());
+}
+
+#[test]
 fn unborn_repository_empty_diff_succeeds() {
     let repo = Repo::new("develop");
     let messages = repo.gd_in(&[]).unwrap();
@@ -364,6 +533,7 @@ fn large_diff_is_streamed_to_a_file() {
     repo.write("large.txt", vec![b'b'; 2 * 1024 * 1024]);
     let expected = repo.git(["diff", "--no-color"]).stdout;
 
-    repo.gd_in(&["--quiet"]).unwrap();
+    let messages = repo.gd_in(&[]).unwrap();
     assert_eq!(patch(&repo, "diff.patch"), expected);
+    assert!(String::from_utf8_lossy(&messages).contains(" KiB)"));
 }

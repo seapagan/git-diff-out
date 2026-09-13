@@ -1,9 +1,19 @@
-use std::collections::HashSet;
+#[cfg(unix)]
+#[path = "support/fake_program.rs"]
+mod fake_program;
 
+use std::{collections::HashSet, ffi::OsStr};
+
+#[cfg(unix)]
+use fake_program::executable_script;
+
+#[cfg(unix)]
+use git_diff_out::git::detect_base;
 use git_diff_out::{
     cli::Mode,
-    git::{choose_base, choose_remote, diff_args},
+    git::{choose_base, choose_remote, diff_args, resolved_diff_args},
 };
+use tempfile::tempdir;
 
 #[test]
 fn builds_exact_diff_arguments() {
@@ -84,4 +94,78 @@ fn mismatched_symbolic_remote_is_ignored() {
         choose_base(Some(("origin", "upstream/main")), &locals).as_deref(),
         Some("master")
     );
+}
+
+#[test]
+fn all_mode_reports_git_startup_failure() {
+    let cwd = tempdir().unwrap();
+    let error = resolved_diff_args(
+        &Mode::All,
+        None,
+        cwd.path(),
+        OsStr::new("git-executable-that-does-not-exist"),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("failed to start git"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn all_mode_reports_empty_tree_command_failure() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("hash-fails");
+    let error = resolved_diff_args(&Mode::All, None, cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert_eq!(error, "cannot resolve Git's empty tree: hash failed");
+}
+
+#[cfg(unix)]
+#[test]
+fn all_mode_rejects_an_empty_tree_object_id() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("empty-tree-empty");
+    let error = resolved_diff_args(&Mode::All, None, cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert_eq!(error, "git returned an empty empty-tree object ID");
+}
+
+#[cfg(unix)]
+#[test]
+fn all_mode_rejects_non_utf8_empty_tree_object_id() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("empty-tree-non-utf8");
+    let error = resolved_diff_args(&Mode::All, None, cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert_eq!(error, "git returned a non-UTF-8 empty-tree object ID");
+}
+
+#[cfg(unix)]
+#[test]
+fn all_mode_reports_hash_object_startup_failure() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("hash-startup-fails");
+    let error = resolved_diff_args(&Mode::All, None, cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert!(error.contains("failed to start git"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn base_detection_reports_a_mid_sequence_startup_failure() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("base-mid-startup-fails");
+    let error = detect_base(cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert!(error.contains("failed to start git"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn base_detection_rejects_non_utf8_reference_data() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("reference-non-utf8");
+    let error = detect_base(cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert_eq!(error, "git returned non-UTF-8 reference data");
 }

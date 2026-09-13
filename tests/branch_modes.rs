@@ -77,6 +77,19 @@ fn explicit_branch_stdout_works_without_a_config_path() {
 }
 
 #[test]
+fn detected_branch_stdout_matches_git() {
+    let repo = feature_repo("main");
+    let expected = repo.git(["diff", "--no-color", "main...HEAD"]).stdout;
+
+    let output = repo.gd(&["branch", "--stdout"]);
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert!(!repo.path().join("branch-diff.patch").exists());
+}
+
+#[test]
 fn configured_base_precedes_remote_detection() {
     let repo = feature_repo("develop");
     set_remote_default(&repo, "origin", "main", "develop");
