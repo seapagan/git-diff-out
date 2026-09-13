@@ -124,16 +124,12 @@ jobs:
           awk '
             /^SF:/ {
               found = 1
-              path = substr($0, 4)
-              if (
-                path == "" || path ~ /^\// || path ~ /^[A-Za-z]:[\\/]/ ||
-                path ~ /(^|\/)\.\.(\/|$)/ || path ~ /\\/
-              ) {
+              if ($0 !~ /^SF:src\/[A-Za-z0-9_.\/-]+$/) {
                 print "Invalid LCOV source path: " $0 > "/dev/stderr"
                 invalid = 1
               }
-              if (seen[path]++) {
-                print "Duplicate LCOV source path: " path > "/dev/stderr"
+              if (seen[$0]++) {
+                print "Duplicate LCOV source path: " $0 > "/dev/stderr"
                 duplicate = 1
               }
             }
@@ -317,17 +313,14 @@ jobs:
           }
           $sourcePaths = @(
             Select-String -Path $coveragePath -Pattern '^SF:' |
-              ForEach-Object { $_.Line.Substring(3) }
+              ForEach-Object { $_.Line }
           )
           if ($sourcePaths.Count -eq 0) {
             throw "The Windows coverage report contains no source paths."
           }
           $invalidPaths = @(
-            $sourcePaths | Where-Object {
-              [System.IO.Path]::IsPathRooted($_) -or
-              $_.Contains('\') -or
-              ($_.Split('/') -contains '..')
-            }
+            $sourcePaths |
+              Where-Object { $_ -notmatch '^SF:src/[A-Za-z0-9_./-]+$' }
           )
           if ($invalidPaths.Count -gt 0) {
             $invalidPaths | ForEach-Object {
@@ -412,23 +405,19 @@ jobs:
             coverage/windows/coverage-windows.lcov
           do
             test -s "$report"
+            grep -q '^SF:' "$report"
             awk '
               /^SF:/ {
-                found = 1
-                path = substr($0, 4)
-                if (
-                  path == "" || path ~ /^\// || path ~ /^[A-Za-z]:[\\/]/ ||
-                  path ~ /(^|\/)\.\.(\/|$)/ || path ~ /\\/
-                ) {
+                if ($0 !~ /^SF:src\/[A-Za-z0-9_.\/-]+$/) {
                   print "Invalid LCOV source path: " $0 > "/dev/stderr"
                   invalid = 1
                 }
-                if (seen[path]++) {
-                  print "Duplicate LCOV source path: " path > "/dev/stderr"
+                if (seen[$0]++) {
+                  print "Duplicate LCOV source path: " $0 > "/dev/stderr"
                   duplicate = 1
                 }
               }
-              END { exit !found || invalid || duplicate }
+              END { exit invalid || duplicate }
             ' "$report"
           done
 
@@ -449,16 +438,12 @@ jobs:
           awk '
             /^SF:/ {
               found = 1
-              path = substr($0, 4)
-              if (
-                path == "" || path ~ /^\// || path ~ /^[A-Za-z]:[\\/]/ ||
-                path ~ /(^|\/)\.\.(\/|$)/ || path ~ /\\/
-              ) {
+              if ($0 !~ /^SF:src\/[A-Za-z0-9_.\/-]+$/) {
                 print "Invalid LCOV source path: " $0 > "/dev/stderr"
                 invalid = 1
               }
-              if (seen[path]++) {
-                print "Duplicate LCOV source path: " path > "/dev/stderr"
+              if (seen[$0]++) {
+                print "Duplicate LCOV source path: " $0 > "/dev/stderr"
                 duplicate = 1
               }
             }

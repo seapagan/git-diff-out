@@ -157,7 +157,25 @@ fn stdout_mode_without_a_branch_default_does_not_read_config() {
         Cli::parse_from(["gd", "--stdout"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
-            config_path,
+            config_path: Some(config_path),
+            git_program: OsString::from("git"),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn normal_stdout_works_without_a_config_path() {
+    let repo = Repo::new("main");
+    repo.write("tracked.txt", "unchanged\n");
+    repo.commit_all("initial");
+
+    app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
             git_program: OsString::from("git"),
         },
         &mut Vec::new(),
@@ -219,7 +237,7 @@ fn configured_quiet_and_verbose_precedence_control_messages() {
     fs::write(&config_path, "quiet = true\n").unwrap();
     let environment = || app::Environment {
         cwd: repo.path().to_path_buf(),
-        config_path: config_path.clone(),
+        config_path: Some(config_path.clone()),
         git_program: OsString::from("git"),
     };
 
@@ -253,7 +271,7 @@ fn configured_relative_output_directory_is_resolved_from_cwd() {
         Cli::parse_from(["gd"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
-            config_path,
+            config_path: Some(config_path),
             git_program: OsString::from("git"),
         },
         &mut Vec::new(),
@@ -264,6 +282,27 @@ fn configured_relative_output_directory_is_resolved_from_cwd() {
         fs::read(repo.path().join("configured patches/diff.patch")).unwrap(),
         repo.git(["diff", "--no-color"]).stdout
     );
+}
+
+#[test]
+fn file_output_without_a_config_path_uses_defaults() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let mut messages = Vec::new();
+
+    app::run_in_with_writer(
+        Cli::parse_from(["gd"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: OsString::from("git"),
+        },
+        &mut messages,
+    )
+    .unwrap();
+
+    assert_eq!(patch(&repo, "diff.patch"), expected);
+    assert!(String::from_utf8_lossy(&messages).starts_with("Wrote diff.patch ("));
 }
 
 #[test]
@@ -289,7 +328,7 @@ fn unavailable_git_executable_is_actionable() {
         Cli::parse_from(["gd", "--quiet"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
-            config_path: config_dir.path().join("missing.toml"),
+            config_path: Some(config_dir.path().join("missing.toml")),
             git_program: OsString::from("git-executable-that-does-not-exist"),
         },
         &mut Vec::new(),

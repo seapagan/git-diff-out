@@ -21,7 +21,7 @@ pub fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
 
 pub struct Environment {
     pub cwd: PathBuf,
-    pub config_path: PathBuf,
+    pub config_path: Option<PathBuf>,
     pub git_program: OsString,
 }
 
@@ -29,7 +29,7 @@ impl Environment {
     fn system() -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             cwd: std::env::current_dir()?,
-            config_path: Config::default_path()?,
+            config_path: Config::default_path().ok(),
             git_program: OsString::from("git"),
         })
     }
@@ -62,7 +62,10 @@ pub fn run_in_with_writer(
         }
     }
 
-    let config = Config::load(&environment.config_path)?;
+    let config = match environment.config_path {
+        Some(path) => Config::load(&path)?,
+        None => Config::default(),
+    };
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
     let base = match &mode {
         Mode::Branch(Some(explicit)) => Some(explicit.clone()),

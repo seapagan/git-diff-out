@@ -62,6 +62,21 @@ fn explicit_base_supports_custom_root_branch() {
 }
 
 #[test]
+fn explicit_branch_stdout_works_without_a_config_path() {
+    let repo = feature_repo("develop");
+
+    app::run_in(
+        Cli::parse_from(["gd", "b", "develop", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: OsString::from("git"),
+        },
+    )
+    .unwrap();
+}
+
+#[test]
 fn configured_base_precedes_remote_detection() {
     let repo = feature_repo("develop");
     set_remote_default(&repo, "origin", "main", "develop");
@@ -74,7 +89,7 @@ fn configured_base_precedes_remote_detection() {
         cli,
         app::Environment {
             cwd: repo.path().to_path_buf(),
-            config_path,
+            config_path: Some(config_path),
             git_program: OsString::from("git"),
         },
     )
@@ -96,7 +111,7 @@ fn cli_base_precedes_configured_base() {
         cli,
         app::Environment {
             cwd: repo.path().to_path_buf(),
-            config_path,
+            config_path: Some(config_path),
             git_program: OsString::from("git"),
         },
     )

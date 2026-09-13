@@ -81,7 +81,7 @@ impl Repo {
             cli,
             app::Environment {
                 cwd: self.path().to_path_buf(),
-                config_path: self.path().join(".gd-test-home/missing-config.toml"),
+                config_path: Some(self.path().join(".gd-test-home/missing-config.toml")),
                 git_program: "git".into(),
             },
             &mut messages,
