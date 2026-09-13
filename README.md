@@ -5,19 +5,19 @@ predictable patch files or raw stdout.
 
 ## Usage
 
-| Command                  | Meaning                                              | Default Output              |
-| ------------------------ | ---------------------------------------------------- | --------------------------- |
-| `gd`                     | Unstaged tracked changes                             | `diff.patch`                |
-| `gd u` / `gd unstaged`   | Unstaged tracked changes                             | `unstaged.patch`            |
-| `gd s` / `gd staged`     | Staged tracked changes                               | `staged.patch`              |
-| `gd a` / `gd all`        | All uncommitted tracked changes                      | `uncommitted.patch`         |
-| `gd b` / `gd branch`     | Changes since the configured or detected branch base | `branch-diff.patch`         |
-| `gd b develop`           | Changes since the explicit `develop` branch base     | `branch-diff.patch`         |
-| `gd 3`                   | Changes introduced by the last three commits         | `last-3-commits.patch`      |
-| `gd s --stdout`          | Staged tracked changes written to stdout             | Standard output             |
-| `gd 3 -p \| grep TODO`   | Last three commits filtered for `TODO`               | Standard output             |
-| `gd -o review-patches`   | Unstaged tracked changes with an output override     | `review-patches/diff.patch` |
-| `gd --quiet`             | Unstaged tracked changes without a success message   | `diff.patch`                |
+| Command                | Meaning                                              | Default Output              |
+| ---------------------- | ---------------------------------------------------- | --------------------------- |
+| `gd`                   | Unstaged tracked changes                             | `diff.patch`                |
+| `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.patch`            |
+| `gd s` / `gd staged`   | Staged tracked changes                               | `staged.patch`              |
+| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.patch`         |
+| `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch-diff.patch`         |
+| `gd b develop`         | Current-branch changes relative to `develop`         | `branch-diff.patch`         |
+| `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.patch`      |
+| `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output             |
+| `gd 3 -p \| grep TODO` | Last three commits filtered for `TODO`               | Standard output             |
+| `gd -o review-patches` | Unstaged tracked changes with an output override     | `review-patches/diff.patch` |
+| `gd --quiet`           | Unstaged tracked changes without a success message   | `diff.patch`                |
 
 `--stdout`/`-p` cannot be combined with `--output-dir`/`-o`. In stdout mode,
 `gd` emits only patch bytes on stdout; errors remain on stderr.
@@ -39,6 +39,10 @@ global Git ignore configuration:
 `gd` does not modify repositories or ignore files automatically.
 
 ## Branch bases
+
+Branch mode compares the current branch with its base using Git's three-dot
+diff (`BASE...HEAD`), showing changes introduced on the current branch since
+the branches diverged.
 
 `gd branch` uses an explicit CLI base first, then configured `base_branch`.
 Otherwise it asks Git for the current branch's upstream remote, falling back

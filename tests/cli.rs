@@ -131,4 +131,10 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("[MODE]  Diff mode:"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));
+    assert!(help.contains("Examples:"));
+    assert!(help.contains("gd 3"));
+    assert!(help.contains("gd b"));
+    assert!(help.contains("gd b develop"));
+    assert!(help.contains("gd s -p"));
+    assert!(help.contains("current-branch changes relative to"));
 }

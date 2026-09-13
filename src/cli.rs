@@ -7,7 +7,8 @@ use clap::{Parser, error::ErrorKind};
     name = "gd",
     version,
     about,
-    override_usage = "\n  gd [OPTIONS] [MODE]\n  gd [OPTIONS] {b|branch} [BASE]"
+    override_usage = "\n  gd [OPTIONS] [MODE]\n  gd [OPTIONS] {b|branch} [BASE]",
+    after_help = "Examples:\n  gd                 Write unstaged tracked changes to diff.patch\n  gd s               Write staged tracked changes to staged.patch\n  gd 3               Write the last 3 commits to last-3-commits.patch\n  gd b               Write current-branch changes relative to the detected base\n  gd b develop       Write current-branch changes relative to develop\n  gd s -p            Write the staged diff to stdout"
 )]
 pub struct Cli {
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
