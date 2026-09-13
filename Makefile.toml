@@ -3,7 +3,8 @@
 #   rustup component add rustfmt clippy
 #   cargo install cargo-nextest cargo-llvm-cov cargo-audit cargo-deny zizmor cargo-xwin --locked
 #   rustup component add llvm-tools-preview
-#   go install github.com/rhysd/actionlint/cmd/actionlint@latest (or use a release binary)
+#   go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 (or use a release binary)
+#   shellcheck from the host platform package manager or official release archive
 #   git from the host platform
 #
 # cargo-msrv is needed only when discovering or updating the MSRV:
@@ -30,6 +31,7 @@ args = [
   "nextest",
   "--all-targets",
   "--all-features",
+  "--locked",
   "--no-fail-fast",
   "--remap-path-prefix",
   "--lcov",
@@ -44,6 +46,7 @@ args = [
   "nextest",
   "--all-targets",
   "--all-features",
+  "--locked",
   "--no-fail-fast",
   "--remap-path-prefix",
   "--html",
@@ -54,7 +57,7 @@ args = [
 [tasks.format]
 description = "Check Rust formatting without modifying files"
 command = "cargo"
-args = ["fmt", "--check"]
+args = ["fmt", "--all", "--", "--check"]
 
 [tasks.whitespace]
 description = "Check unstaged and staged changes for whitespace errors"
@@ -71,6 +74,7 @@ args = [
   "clippy",
   "--all-targets",
   "--all-features",
+  "--locked",
   "--",
   "-D",
   "warnings",
@@ -86,6 +90,12 @@ args = [
   "clippy::large_types_passed_by_value",
 ]
 
+[tasks.doc]
+description = "Build Rust documentation with warnings denied"
+env = { "RUSTDOCFLAGS" = "-D warnings" }
+command = "cargo"
+args = ["doc", "--no-deps", "--locked"]
+
 # Dependency and workflow policy
 
 [tasks.audit]
@@ -98,14 +108,18 @@ description = "Check dependency advisories, licences, bans, and sources"
 command = "cargo"
 args = ["deny", "--locked", "check"]
 
+[tasks.shellcheck-present]
+private = true
+command = "shellcheck"
+args = ["--version"]
+
 [tasks.actions-lint]
-description = "Validate GitHub Actions workflow syntax and expressions"
-condition = { files_exist = [".github/workflows/*"] }
+description = "Validate GitHub Actions syntax and embedded shell with ShellCheck"
+dependencies = ["shellcheck-present"]
 command = "actionlint"
 
 [tasks.zizmor]
 description = "Audit GitHub Actions workflows with the pedantic persona"
-condition = { files_exist = [".github/workflows/*"] }
 command = "zizmor"
 args = ["--persona=pedantic", "."]
 
@@ -119,7 +133,7 @@ args = ["package", "--locked"]
 [tasks.package-list]
 description = "List files included in the crate package"
 command = "cargo"
-args = ["package", "--list"]
+args = ["package", "--list", "--locked"]
 
 # Minimum supported Rust version
 
@@ -193,25 +207,33 @@ env = { "REQUIRED_HOST" = "linux", "REQUIRED_HOST_DESCRIPTION" = "Linux" }
 description = "Check all native Unix targets and features"
 dependencies = ["_require-unix"]
 command = "cargo"
-args = ["check", "--all-targets", "--all-features"]
+args = ["check", "--all-targets", "--all-features", "--locked"]
 
 [tasks.unix-clippy]
 description = "Run strict Clippy for all native Unix targets and features"
 dependencies = ["_require-unix"]
 command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = [
+  "clippy",
+  "--all-targets",
+  "--all-features",
+  "--locked",
+  "--",
+  "-D",
+  "warnings",
+]
 
 [tasks.unix-test]
 description = "Run all native Unix tests"
 dependencies = ["_require-unix"]
 command = "cargo"
-args = ["test", "--all-targets", "--all-features"]
+args = ["test", "--all-targets", "--all-features", "--locked"]
 
 [tasks.unix-build]
 description = "Build all native Unix targets and features"
 dependencies = ["_require-unix"]
 command = "cargo"
-args = ["build", "--all-targets", "--all-features"]
+args = ["build", "--all-targets", "--all-features", "--locked"]
 
 # Native Windows
 
@@ -219,25 +241,33 @@ args = ["build", "--all-targets", "--all-features"]
 description = "Check all targets and features on a native Windows host"
 dependencies = ["_require-windows"]
 command = "cargo"
-args = ["check", "--all-targets", "--all-features"]
+args = ["check", "--all-targets", "--all-features", "--locked"]
 
 [tasks.windows-clippy]
 description = "Run strict Clippy on a native Windows host"
 dependencies = ["_require-windows"]
 command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = [
+  "clippy",
+  "--all-targets",
+  "--all-features",
+  "--locked",
+  "--",
+  "-D",
+  "warnings",
+]
 
 [tasks.windows-test]
 description = "Run all tests on a native Windows host"
 dependencies = ["_require-windows"]
 command = "cargo"
-args = ["test", "--all-targets", "--all-features"]
+args = ["test", "--all-targets", "--all-features", "--locked"]
 
 [tasks.windows-build]
 description = "Build all targets and features on a native Windows host"
 dependencies = ["_require-windows"]
 command = "cargo"
-args = ["build", "--all-targets", "--all-features"]
+args = ["build", "--all-targets", "--all-features", "--locked"]
 
 # Linux-hosted Windows MSVC cross-verification
 
@@ -252,6 +282,7 @@ args = [
   "x86_64-pc-windows-msvc",
   "--all-targets",
   "--all-features",
+  "--locked",
 ]
 
 [tasks.xwin-clippy]
@@ -265,6 +296,7 @@ args = [
   "x86_64-pc-windows-msvc",
   "--all-targets",
   "--all-features",
+  "--locked",
   "--",
   "-D",
   "warnings",
@@ -281,6 +313,7 @@ args = [
   "x86_64-pc-windows-msvc",
   "--all-targets",
   "--all-features",
+  "--locked",
 ]
 
 # Aggregate verification flows
@@ -291,6 +324,7 @@ dependencies = [
   "format",
   "whitespace",
   "quality",
+  "doc",
   "msrv",
   "audit",
   "deny",

@@ -1,0 +1,148 @@
+name: Policy
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.98.1
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: seapagan/setup-rust@a91f5a34c552642ece0e8cef8b5e9226f41a3c0b # v1.0.0
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: v1-${{ runner.os }}-rust-${{ env.RUST_VERSION }}
+          shared-key: policy-audit
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install audit tools
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-make@0.37.24,cargo-audit@0.22.2
+
+      - name: Run dependency audit
+        run: cargo make audit
+
+  deny:
+    name: Dependency policy
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: seapagan/setup-rust@a91f5a34c552642ece0e8cef8b5e9226f41a3c0b # v1.0.0
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: v1-${{ runner.os }}-rust-${{ env.RUST_VERSION }}
+          shared-key: policy-deny
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install dependency-policy tools
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-make@0.37.24,cargo-deny@0.20.2
+
+      - name: Run dependency policy
+        run: cargo make deny
+
+  actions-lint:
+    name: Workflow syntax and shell
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: seapagan/setup-rust@a91f5a34c552642ece0e8cef8b5e9226f41a3c0b # v1.0.0
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install Cargo Make
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-make@0.37.24
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="1.7.12"
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP:?}/actionlint-${version}"
+          archive_path="${RUNNER_TEMP:?}/${archive}"
+          url="https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}"
+
+          mkdir -p "$install_dir"
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            --output "$archive_path" "$url"
+          printf '%s  %s\n' \
+            "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8" \
+            "$archive_path" | sha256sum --check -
+          tar -xzf "$archive_path" -C "$install_dir"
+          echo "$install_dir" >> "${GITHUB_PATH:?}"
+          "$install_dir/actionlint" -version
+
+      - name: Install ShellCheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.11.0"
+          archive="shellcheck-v${version}.linux.x86_64.tar.gz"
+          install_dir="${RUNNER_TEMP:?}/shellcheck-${version}"
+          archive_path="${RUNNER_TEMP:?}/${archive}"
+          url="https://github.com/koalaman/shellcheck/releases/download/v${version}/${archive}"
+
+          mkdir -p "$install_dir"
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            --output "$archive_path" "$url"
+          printf '%s  %s\n' \
+            "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6" \
+            "$archive_path" | sha256sum --check -
+          tar -xzf "$archive_path" -C "$install_dir"
+          shellcheck_dir="$install_dir/shellcheck-v${version}"
+          echo "$shellcheck_dir" >> "${GITHUB_PATH:?}"
+          "$shellcheck_dir/shellcheck" --version
+
+      - name: Validate workflow syntax and embedded shell
+        run: cargo make actions-lint

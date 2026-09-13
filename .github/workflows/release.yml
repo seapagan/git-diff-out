@@ -1,0 +1,208 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.98.1
+
+jobs:
+  validate-release:
+    name: Validate release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tagged revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: seapagan/setup-rust@a91f5a34c552642ece0e8cef8b5e9226f41a3c0b # v1.0.0
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: v1-${{ runner.os }}-rust-${{ env.RUST_VERSION }}
+          shared-key: release-validation
+          lookup-only: true
+
+      - name: Match tag to package version
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_version="$(
+            cargo metadata --no-deps --format-version 1 --locked |
+              jq -r '.packages[] | select(.name == "git-diff-out") | .version'
+          )"
+          if [[ -z "$package_version" || "$package_version" == "null" ]]; then
+            echo "error: git-diff-out package version was not found" >&2
+            exit 1
+          fi
+          if [[ "$package_version" != "$TAG_NAME" ]]; then
+            echo "error: tag $TAG_NAME does not match package version $package_version" >&2
+            exit 1
+          fi
+
+      - name: Verify package
+        run: cargo package --locked
+
+  build:
+    name: Build ${{ matrix.binary_target }}
+    needs: validate-release
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            binary_target: x86_64-unknown-linux-gnu
+            archive_extension: tar.gz
+          - runner: windows-latest
+            binary_target: x86_64-pc-windows-msvc
+            archive_extension: zip
+          - runner: macos-15-intel
+            binary_target: x86_64-apple-darwin
+            archive_extension: tar.gz
+          - runner: macos-15
+            binary_target: aarch64-apple-darwin
+            archive_extension: tar.gz
+
+    env:
+      ARCHIVE_NAME: git-diff-out-v${{ github.ref_name }}-${{ matrix.binary_target }}.${{ matrix.archive_extension }}
+      BINARY_NAME: gd
+      BINARY_TARGET: ${{ matrix.binary_target }}
+
+    steps:
+      - name: Checkout tagged revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: seapagan/setup-rust@a91f5a34c552642ece0e8cef8b5e9226f41a3c0b # v1.0.0
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Add Rust target
+        shell: bash
+        run: rustup target add "$BINARY_TARGET"
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: v1-${{ runner.os }}-rust-${{ env.RUST_VERSION }}
+          shared-key: release-${{ matrix.binary_target }}
+          lookup-only: true
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release --locked --target "$BINARY_TARGET"
+
+      - name: Package Unix archive
+        if: matrix.runner != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_root="$(mktemp -d "${RUNNER_TEMP:?}/git-diff-out-release.XXXXXX")"
+          cp "target/$BINARY_TARGET/release/$BINARY_NAME" "$archive_root/gd"
+          cp LICENSE README.md "$archive_root/"
+          tar -czf "$ARCHIVE_NAME" -C "$archive_root" gd LICENSE README.md
+          test -s "$ARCHIVE_NAME"
+
+      - name: Package Windows archive
+        if: matrix.runner == 'windows-latest'
+        shell: pwsh
+        run: |
+          $archiveRoot = Join-Path $env:RUNNER_TEMP "git-diff-out-release"
+          New-Item -ItemType Directory -Force -Path $archiveRoot | Out-Null
+          Copy-Item `
+            "target/$env:BINARY_TARGET/release/$env:BINARY_NAME.exe" `
+            -Destination (Join-Path $archiveRoot "gd.exe")
+          Copy-Item "LICENSE", "README.md" -Destination $archiveRoot
+          Compress-Archive `
+            -Path (Join-Path $archiveRoot "gd.exe"), `
+              (Join-Path $archiveRoot "LICENSE"), `
+              (Join-Path $archiveRoot "README.md") `
+            -DestinationPath $env:ARCHIVE_NAME
+          if ((Get-Item $env:ARCHIVE_NAME).Length -eq 0) {
+            throw "The release archive is empty."
+          }
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.binary_target }}
+          path: ${{ env.ARCHIVE_NAME }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Create the GitHub Release and upload its archives.
+
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate release archives
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected=(
+            "git-diff-out-v${TAG_NAME}-x86_64-unknown-linux-gnu.tar.gz"
+            "git-diff-out-v${TAG_NAME}-x86_64-pc-windows-msvc.zip"
+            "git-diff-out-v${TAG_NAME}-x86_64-apple-darwin.tar.gz"
+            "git-diff-out-v${TAG_NAME}-aarch64-apple-darwin.tar.gz"
+          )
+          mapfile -t actual < <(find release-assets -maxdepth 1 -type f -printf '%f\n')
+          if [[ "${#actual[@]}" -ne "${#expected[@]}" ]]; then
+            printf 'error: expected four archives, found %s\n' "${#actual[@]}" >&2
+            printf 'found: %s\n' "${actual[@]}" >&2
+            exit 1
+          fi
+          for archive in "${expected[@]}"; do
+            test -s "release-assets/$archive"
+          done
+
+      - name: Create release and upload archives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" \
+              --verify-tag \
+              --title "$TAG_NAME" \
+              --generate-notes
+          fi
+          gh release upload "$TAG_NAME" release-assets/* --clobber
