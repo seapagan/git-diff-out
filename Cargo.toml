@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85.0"
 description = "Export common Git diffs to predictable diff files or stdout"
+readme = "README.md"
 license = "MIT"
 repository = "https://github.com/seapagan/git-diff-out"
+keywords = ["git", "diff", "cli", "developer-tools", "code-review"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "gd"
