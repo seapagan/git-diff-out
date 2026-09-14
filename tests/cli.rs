@@ -195,3 +195,60 @@ fn captured_help_is_plain_text() {
     assert!(help.contains("Examples:"));
     assert!(!help.contains('\u{1b}'));
 }
+
+#[test]
+fn alias_help_uses_its_own_name() {
+    let output = Command::new(env!("CARGO_BIN_EXE_git-diff-out"))
+        .arg("--help")
+        .output()
+        .expect("git-diff-out should run");
+    let help = String::from_utf8(output.stdout).expect("help should be UTF-8");
+
+    assert!(output.status.success());
+    assert!(help.contains("Usage: git-diff-out [OPTIONS] [MODE]\n"));
+    assert!(help.contains("  git-diff-out [OPTIONS] {b|branch} [BASE]\n"));
+    assert!(help.contains("git-diff-out s -p"));
+    assert!(!help.contains("gd [OPTIONS]"));
+    assert!(!help.contains("  gd "));
+}
+
+#[test]
+fn alias_prefixes_application_errors_with_its_own_name() {
+    let directory = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_git-diff-out"))
+        .arg("--stdout")
+        .current_dir(directory.path())
+        .env("HOME", directory.path())
+        .env("USERPROFILE", directory.path())
+        .env("XDG_CONFIG_HOME", directory.path())
+        .env("APPDATA", directory.path())
+        .output()
+        .expect("git-diff-out should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr.lines().last().unwrap().starts_with("git-diff-out: "),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn alias_reports_the_same_package_version_as_gd() {
+    let gd = Command::new(env!("CARGO_BIN_EXE_gd"))
+        .arg("--version")
+        .output()
+        .expect("gd should run");
+    let alias = Command::new(env!("CARGO_BIN_EXE_git-diff-out"))
+        .arg("--version")
+        .output()
+        .expect("git-diff-out should run");
+    let gd_version = String::from_utf8(gd.stdout).unwrap();
+    let alias_version = String::from_utf8(alias.stdout).unwrap();
+
+    assert!(gd.status.success());
+    assert!(alias.status.success());
+    let gd_version = gd_version.strip_prefix("gd ").unwrap();
+    let alias_version = alias_version.strip_prefix("git-diff-out ").unwrap();
+    assert_eq!(alias_version, gd_version);
+}

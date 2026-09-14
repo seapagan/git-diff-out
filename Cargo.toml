@@ -9,7 +9,11 @@ repository = "https://github.com/seapagan/git-diff-out"
 
 [[bin]]
 name = "gd"
-path = "src/main.rs"
+path = "src/bin/gd.rs"
+
+[[bin]]
+name = "git-diff-out"
+path = "src/bin/git-diff-out.rs"
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }

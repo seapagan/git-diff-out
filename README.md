@@ -1,7 +1,9 @@
 # git-diff-out
 
-`git-diff-out` installs `gd`, a small wrapper that exports common Git diffs to
-predictable diff files or raw stdout.
+`git-diff-out` installs two names for the same CLI: `gd`, the normal short
+command, and `git-diff-out`, a collision-safe alternative for systems where
+`gd` is already taken. Both export common Git diffs to predictable diff files
+or raw stdout.
 
 ## Usage
 

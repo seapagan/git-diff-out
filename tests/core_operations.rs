@@ -114,6 +114,32 @@ fn installed_binary_runs_a_core_stdout_mode() {
     assert_eq!(output.stdout, repo.git(["diff", "--no-color"]).stdout);
 }
 
+#[test]
+fn alias_stdout_matches_gd() {
+    let repo = Repo::new("main");
+    repo.write("tracked.txt", "before\n");
+    repo.commit_all("initial");
+    repo.write("tracked.txt", "after\n");
+
+    let gd = repo.gd(&["--stdout"]);
+    let isolated = repo.path().join(".gd-test-home");
+    let alias = Command::new(env!("CARGO_BIN_EXE_git-diff-out"))
+        .arg("--stdout")
+        .current_dir(repo.path())
+        .env("HOME", &isolated)
+        .env("USERPROFILE", &isolated)
+        .env("XDG_CONFIG_HOME", &isolated)
+        .env("APPDATA", &isolated)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", null_device())
+        .output()
+        .expect("git-diff-out should run");
+
+    assert_success(&gd);
+    assert_success(&alias);
+    assert_eq!(alias.stdout, gd.stdout);
+}
+
 fn assert_unborn_all_uses_repository_empty_tree(repo: &Repo) {
     repo.write("tracked.txt", "staged\n");
     repo.git(["add", "tracked.txt"]);

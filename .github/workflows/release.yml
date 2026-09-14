@@ -91,8 +91,9 @@ jobs:
           set -euo pipefail
           archive_root="$(mktemp -d "${RUNNER_TEMP:?}/git-diff-out-release.XXXXXX")"
           cp "target/$BINARY_TARGET/release/gd" "$archive_root/gd"
+          cp "target/$BINARY_TARGET/release/git-diff-out" "$archive_root/git-diff-out"
           cp LICENSE README.md "$archive_root/"
-          tar -czf "$ARCHIVE_NAME" -C "$archive_root" gd LICENSE README.md
+          tar -czf "$ARCHIVE_NAME" -C "$archive_root" gd git-diff-out LICENSE README.md
           test -s "$ARCHIVE_NAME"
 
       - name: Package Windows archive
@@ -104,9 +105,13 @@ jobs:
           Copy-Item `
             "target/$env:BINARY_TARGET/release/gd.exe" `
             -Destination (Join-Path $archiveRoot "gd.exe")
+          Copy-Item `
+            "target/$env:BINARY_TARGET/release/git-diff-out.exe" `
+            -Destination (Join-Path $archiveRoot "git-diff-out.exe")
           Copy-Item "LICENSE", "README.md" -Destination $archiveRoot
           Compress-Archive `
             -Path (Join-Path $archiveRoot "gd.exe"), `
+              (Join-Path $archiveRoot "git-diff-out.exe"), `
               (Join-Path $archiveRoot "LICENSE"), `
               (Join-Path $archiveRoot "README.md") `
             -DestinationPath $env:ARCHIVE_NAME

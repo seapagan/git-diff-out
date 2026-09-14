@@ -1,20 +1,23 @@
 use std::path::PathBuf;
 
-use clap::{Parser, error::ErrorKind};
+use clap::{Command, CommandFactory, Parser, error::ErrorKind};
 use colored_text::Colorize;
 
-const USAGE: &str = r#"gd [OPTIONS] [MODE]
-  gd [OPTIONS] {b|branch} [BASE]"#;
+fn usage(name: &str) -> String {
+    format!("{name} [OPTIONS] [MODE]\n  {name} [OPTIONS] {{b|branch}} [BASE]")
+}
 
-const EXAMPLES: &str = r#"  gd                 Write unstaged tracked changes to unstaged.diff
-  gd s               Write staged tracked changes to staged.diff
-  gd 3               Write the last 3 commits to last-3-commits.diff
-  gd b               Write current-branch changes relative to the detected base
-  gd b develop       Write current-branch changes relative to develop
-  gd s -p            Write the staged diff to stdout"#;
-
-fn after_help() -> String {
-    format!("{}\n{EXAMPLES}", "Examples:".bold().underline())
+fn after_help(name: &str) -> String {
+    format!(
+        r#"{}
+  {name}                 Write unstaged tracked changes to unstaged.diff
+  {name} s               Write staged tracked changes to staged.diff
+  {name} 3               Write the last 3 commits to last-3-commits.diff
+  {name} b               Write current-branch changes relative to the detected base
+  {name} b develop       Write current-branch changes relative to develop
+  {name} s -p            Write the staged diff to stdout"#,
+        "Examples:".bold().underline()
+    )
 }
 
 #[derive(Debug, Parser)]
@@ -22,8 +25,8 @@ fn after_help() -> String {
     name = "gd",
     version,
     about,
-    override_usage = USAGE,
-    after_help = after_help()
+    override_usage = usage("gd"),
+    after_help = after_help("gd")
 )]
 pub struct Cli {
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
@@ -81,6 +84,13 @@ pub enum QuietOverride {
 }
 
 impl Cli {
+    pub fn command_for(name: &'static str) -> Command {
+        Self::command()
+            .name(name)
+            .override_usage(usage(name))
+            .after_help(after_help(name))
+    }
+
     pub fn validated(self) -> Result<Self, clap::Error> {
         self.mode()?;
         Ok(self)
