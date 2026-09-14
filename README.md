@@ -5,6 +5,67 @@ command, and `git-diff-out`, a collision-safe alternative for systems where
 `gd` is already taken. Both export common Git diffs to predictable diff files
 or raw stdout.
 
+## Installation
+
+### cargo-binstall (recommended)
+
+```bash
+cargo binstall git-diff-out
+```
+
+cargo-binstall prefers the prebuilt release binaries, avoiding a local build on
+supported platforms. It installs both executable names:
+
+```text
+gd
+git-diff-out
+```
+
+### cargo install
+
+```bash
+cargo install git-diff-out
+```
+
+This builds from source and requires Rust 1.85.0 or newer. It installs both
+package binaries:
+
+```text
+gd
+git-diff-out
+```
+
+### Prebuilt GitHub releases
+
+The [GitHub Releases](https://github.com/seapagan/git-diff-out/releases) page
+provides archives for:
+
+- Linux x86_64
+- Windows x86_64
+- macOS Intel x86_64
+- macOS Apple Silicon aarch64
+
+Each archive contains both executable names for its platform, plus `LICENSE`
+and `README.md`. Extract the archive and place the executable or executables
+you want in a directory on your `PATH`.
+
+### Build from source
+
+```bash
+git clone https://github.com/seapagan/git-diff-out.git
+cd git-diff-out
+cargo build --release --locked
+```
+
+The resulting binaries are:
+
+```text
+target/release/gd
+target/release/git-diff-out
+```
+
+Windows adds the `.exe` suffix to both paths.
+
 ## Usage
 
 | Command                | Meaning                                              | Default Output                   |
