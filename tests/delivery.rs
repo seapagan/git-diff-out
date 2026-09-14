@@ -26,7 +26,7 @@ fn relative_output_directory_with_spaces_and_unicode_is_created() {
     let expected = repo.git(["diff", "--no-color"]).stdout;
     repo.gd_in(&["-o", "review patches λ"]).unwrap();
     assert_eq!(
-        fs::read(repo.path().join("review patches λ/diff.patch")).unwrap(),
+        fs::read(repo.path().join("review patches λ/unstaged.diff")).unwrap(),
         expected
     );
 }
@@ -39,7 +39,7 @@ fn absolute_output_directory_is_supported() {
     repo.gd_in(&["-o", output_dir.path().to_str().unwrap()])
         .unwrap();
     assert_eq!(
-        fs::read(output_dir.path().join("diff.patch")).unwrap(),
+        fs::read(output_dir.path().join("unstaged.diff")).unwrap(),
         expected
     );
 }
@@ -68,18 +68,18 @@ fn temporary_patch_creation_error_names_the_output_directory() {
     let error = repo.gd_in(&["--output-dir", "read-only"]).unwrap_err();
 
     fs::set_permissions(&output_dir, fs::Permissions::from_mode(0o700)).unwrap();
-    assert!(error.contains("cannot create temporary patch"), "{error}");
+    assert!(error.contains("cannot create temporary diff"), "{error}");
     assert!(error.contains(&output_dir.display().to_string()), "{error}");
 }
 
 #[test]
 fn completed_diff_replaces_an_existing_patch() {
     let repo = changed_repo();
-    repo.write("diff.patch", "stale\n");
+    repo.write("unstaged.diff", "stale\n");
     let expected = repo.git(["diff", "--no-color"]).stdout;
 
     repo.gd_in(&[]).unwrap();
-    assert_eq!(patch(&repo, "diff.patch"), expected);
+    assert_eq!(patch(&repo, "unstaged.diff"), expected);
 }
 
 #[test]
@@ -87,12 +87,12 @@ fn successful_empty_diff_removes_stale_patch_and_reports_status() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
-    repo.write("staged.patch", "stale\n");
+    repo.write("staged.diff", "stale\n");
     repo.write("untracked.txt", "irrelevant to staged mode\n");
 
     let messages = repo.gd_in(&["s"]).unwrap();
     assert_eq!(messages, b"No staged changes.\n");
-    assert!(!repo.path().join("staged.patch").exists());
+    assert!(!repo.path().join("staged.diff").exists());
 }
 
 #[test]
@@ -100,24 +100,24 @@ fn stale_patch_removal_error_preserves_the_destination_directory() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
-    let destination = repo.path().join("diff.patch");
+    let destination = repo.path().join("unstaged.diff");
     fs::create_dir(&destination).unwrap();
 
     let error = repo.gd_in(&[]).unwrap_err();
 
-    assert!(error.contains("cannot remove stale patch"), "{error}");
+    assert!(error.contains("cannot remove stale diff"), "{error}");
     assert!(destination.is_dir());
 }
 
 #[test]
 fn patch_persistence_error_preserves_the_destination_directory() {
     let repo = changed_repo();
-    let destination = repo.path().join("diff.patch");
+    let destination = repo.path().join("unstaged.diff");
     fs::create_dir(&destination).unwrap();
 
     let error = repo.gd_in(&[]).unwrap_err();
 
-    assert!(error.contains("cannot replace patch"), "{error}");
+    assert!(error.contains("cannot replace diff"), "{error}");
     assert!(destination.is_dir());
 }
 
@@ -133,7 +133,7 @@ fn one_untracked_file_is_reported_but_remains_outside_the_diff() {
         messages,
         b"No unstaged tracked changes (1 untracked file not included).\n"
     );
-    assert!(!repo.path().join("diff.patch").exists());
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn multiple_untracked_files_are_reported_for_all_mode() {
         messages,
         b"No uncommitted tracked changes (3 untracked files not included).\n"
     );
-    assert!(!repo.path().join("uncommitted.patch").exists());
+    assert!(!repo.path().join("uncommitted.diff").exists());
 }
 
 #[test]
@@ -187,11 +187,11 @@ fn failed_git_preserves_existing_destination() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "initial\n");
     repo.commit_all("initial");
-    repo.write("last-3-commits.patch", "valuable stale patch\n");
+    repo.write("last-3-commits.diff", "valuable stale patch\n");
 
     let error = repo.gd_in(&["3"]).unwrap_err();
     assert_eq!(
-        patch(&repo, "last-3-commits.patch"),
+        patch(&repo, "last-3-commits.diff"),
         b"valuable stale patch\n"
     );
     assert!(error.contains("git diff failed"), "{error}");
@@ -206,7 +206,7 @@ fn stdout_mode_emits_only_raw_patch_and_creates_no_patch() {
     assert_success(&output);
     assert_eq!(output.stdout, expected);
     assert!(output.stderr.is_empty());
-    assert!(!repo.path().join("diff.patch").exists());
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn empty_stdout_mode_is_silent_and_creates_no_patch() {
     assert_success(&output);
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
-    assert!(!repo.path().join("diff.patch").exists());
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]
@@ -285,7 +285,7 @@ fn commit_and_branch_stdout_modes_match_git() {
         );
         assert!(output.stderr.is_empty());
     }
-    assert!(!repo.path().join("last-2-commits.patch").exists());
+    assert!(!repo.path().join("last-2-commits.diff").exists());
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn stdout_and_output_directory_conflict_at_the_cli() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be used with"));
-    assert!(!repo.path().join("out/diff.patch").exists());
+    assert!(!repo.path().join("out/unstaged.diff").exists());
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn configured_quiet_and_verbose_precedence_control_messages() {
         app::run_in_with_writer(Cli::parse_from(["gd", flag]), environment(), &mut messages)
             .unwrap();
         assert!(
-            String::from_utf8_lossy(&messages).starts_with("Wrote diff.patch ("),
+            String::from_utf8_lossy(&messages).starts_with("Wrote unstaged.diff ("),
             "configured quiet mode was not overridden by {flag}"
         );
     }
@@ -358,7 +358,7 @@ fn configured_relative_output_directory_is_resolved_from_cwd() {
     .unwrap();
 
     assert_eq!(
-        fs::read(repo.path().join("configured patches/diff.patch")).unwrap(),
+        fs::read(repo.path().join("configured patches/unstaged.diff")).unwrap(),
         repo.git(["diff", "--no-color"]).stdout
     );
 }
@@ -380,8 +380,8 @@ fn file_output_without_a_config_path_uses_defaults() {
     )
     .unwrap();
 
-    assert_eq!(patch(&repo, "diff.patch"), expected);
-    assert!(String::from_utf8_lossy(&messages).starts_with("Wrote diff.patch ("));
+    assert_eq!(patch(&repo, "unstaged.diff"), expected);
+    assert!(String::from_utf8_lossy(&messages).starts_with("Wrote unstaged.diff ("));
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn message_write_failure_does_not_discard_the_completed_patch() {
     .to_string();
 
     assert_eq!(error, "message sink failed");
-    assert!(repo.path().join("diff.patch").is_file());
+    assert!(repo.path().join("unstaged.diff").is_file());
 }
 
 #[test]
@@ -513,7 +513,7 @@ fn unborn_repository_empty_diff_succeeds() {
     let repo = Repo::new("develop");
     let messages = repo.gd_in(&[]).unwrap();
     assert!(messages.starts_with(b"No unstaged changes."));
-    assert!(!repo.path().join("diff.patch").exists());
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn forced_git_colour_never_enters_patch() {
     repo.git(["config", "color.ui", "always"]);
 
     repo.gd_in(&[]).unwrap();
-    assert!(!patch(&repo, "diff.patch").contains(&0x1b));
+    assert!(!patch(&repo, "unstaged.diff").contains(&0x1b));
 }
 
 #[test]
@@ -534,6 +534,6 @@ fn large_diff_is_streamed_to_a_file() {
     let expected = repo.git(["diff", "--no-color"]).stdout;
 
     let messages = repo.gd_in(&[]).unwrap();
-    assert_eq!(patch(&repo, "diff.patch"), expected);
+    assert_eq!(patch(&repo, "unstaged.diff"), expected);
     assert!(String::from_utf8_lossy(&messages).contains(" KiB)"));
 }

@@ -6,9 +6,9 @@ use colored_text::Colorize;
 const USAGE: &str = r#"gd [OPTIONS] [MODE]
   gd [OPTIONS] {b|branch} [BASE]"#;
 
-const EXAMPLES: &str = r#"  gd                 Write unstaged tracked changes to diff.patch
-  gd s               Write staged tracked changes to staged.patch
-  gd 3               Write the last 3 commits to last-3-commits.patch
+const EXAMPLES: &str = r#"  gd                 Write unstaged tracked changes to unstaged.diff
+  gd s               Write staged tracked changes to staged.diff
+  gd 3               Write the last 3 commits to last-3-commits.diff
   gd b               Write current-branch changes relative to the detected base
   gd b develop       Write current-branch changes relative to develop
   gd s -p            Write the staged diff to stdout"#;
@@ -33,11 +33,11 @@ pub struct Cli {
     /// Base branch for branch mode.
     base: Option<String>,
 
-    /// Write the raw patch to stdout.
+    /// Write the raw diff to stdout.
     #[arg(short = 'p', long, conflicts_with = "output_dir")]
     pub stdout: bool,
 
-    /// Directory in which to write the patch file.
+    /// Directory in which to write the diff file.
     #[arg(short = 'o', long, value_name = "PATH", conflicts_with = "stdout")]
     pub output_dir: Option<PathBuf>,
 
@@ -63,13 +63,12 @@ pub enum Mode {
 impl Mode {
     pub fn filename(&self) -> String {
         match self {
-            Self::Default => "diff.patch".into(),
-            Self::Unstaged => "unstaged.patch".into(),
-            Self::Staged => "staged.patch".into(),
-            Self::All => "uncommitted.patch".into(),
-            Self::Branch(_) => "branch-diff.patch".into(),
-            Self::Commits(1) => "last-commit.patch".into(),
-            Self::Commits(count) => format!("last-{count}-commits.patch"),
+            Self::Default | Self::Unstaged => "unstaged.diff".into(),
+            Self::Staged => "staged.diff".into(),
+            Self::All => "uncommitted.diff".into(),
+            Self::Branch(_) => "branch.diff".into(),
+            Self::Commits(1) => "last-commit.diff".into(),
+            Self::Commits(count) => format!("last-{count}-commits.diff"),
         }
     }
 }

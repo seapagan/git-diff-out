@@ -17,9 +17,9 @@ fn default_and_unstaged_aliases_match_git_diff() {
     let expected = repo.git(["diff", "--no-color"]).stdout;
 
     for (args, filename) in [
-        (&[][..], "diff.patch"),
-        (&["u"][..], "unstaged.patch"),
-        (&["unstaged"][..], "unstaged.patch"),
+        (&[][..], "unstaged.diff"),
+        (&["u"][..], "unstaged.diff"),
+        (&["unstaged"][..], "unstaged.diff"),
     ] {
         repo.gd_in(args).unwrap();
         assert_eq!(patch(&repo, filename), expected);
@@ -37,7 +37,7 @@ fn staged_aliases_match_git_diff_staged() {
 
     for alias in ["s", "staged"] {
         repo.gd_in(&[alias]).unwrap();
-        assert_eq!(patch(&repo, "staged.patch"), expected);
+        assert_eq!(patch(&repo, "staged.diff"), expected);
     }
 }
 
@@ -53,7 +53,7 @@ fn all_aliases_include_staged_and_unstaged_changes() {
 
     for alias in ["a", "all"] {
         repo.gd_in(&[alias]).unwrap();
-        assert_eq!(patch(&repo, "uncommitted.patch"), expected);
+        assert_eq!(patch(&repo, "uncommitted.diff"), expected);
     }
 }
 
@@ -67,7 +67,7 @@ fn commit_counts_match_exact_git_ranges() {
     repo.write("history.txt", "two\n");
     repo.commit_all("two");
 
-    for (count, filename) in [("1", "last-commit.patch"), ("2", "last-2-commits.patch")] {
+    for (count, filename) in [("1", "last-commit.diff"), ("2", "last-2-commits.diff")] {
         let expected = repo
             .git(["diff", "--no-color", &format!("HEAD~{count}..HEAD")])
             .stdout;
@@ -75,9 +75,7 @@ fn commit_counts_match_exact_git_ranges() {
         assert_eq!(patch(&repo, filename), expected);
     }
     let single_count = 1;
-    let legacy_patch = repo
-        .path()
-        .join(format!("last-{single_count}-commit.patch"));
+    let legacy_patch = repo.path().join(format!("last-{single_count}-commit.diff"));
     assert!(!legacy_patch.exists());
 }
 
@@ -101,7 +99,7 @@ fn staged_added_deleted_renamed_and_binary_files_match_git() {
 
     let expected = repo.git(["diff", "--no-color", "--staged"]).stdout;
     repo.gd_in(&["s"]).unwrap();
-    assert_eq!(patch(&repo, "staged.patch"), expected);
+    assert_eq!(patch(&repo, "staged.diff"), expected);
 }
 
 #[test]
@@ -136,7 +134,7 @@ fn assert_unborn_all_uses_repository_empty_tree(repo: &Repo) {
 
     for alias in ["a", "all"] {
         repo.gd_in(&[alias]).unwrap();
-        assert_eq!(patch(repo, "uncommitted.patch"), expected);
+        assert_eq!(patch(repo, "uncommitted.diff"), expected);
     }
     assert_eq!(repo.git(["show", ":tracked.txt"]).stdout, b"staged\n");
     let patch = String::from_utf8(expected).unwrap();

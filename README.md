@@ -1,27 +1,27 @@
 # git-diff-out
 
 `git-diff-out` installs `gd`, a small wrapper that exports common Git diffs to
-predictable patch files or raw stdout.
+predictable diff files or raw stdout.
 
 ## Usage
 
-| Command                | Meaning                                              | Default Output              |
-| ---------------------- | ---------------------------------------------------- | --------------------------- |
-| `gd`                   | Unstaged tracked changes                             | `diff.patch`                |
-| `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.patch`            |
-| `gd s` / `gd staged`   | Staged tracked changes                               | `staged.patch`              |
-| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.patch`         |
-| `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch-diff.patch`         |
-| `gd b develop`         | Current-branch changes relative to `develop`         | `branch-diff.patch`         |
-| `gd 1`                 | Changes introduced by the last commit                | `last-commit.patch`         |
-| `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.patch`      |
-| `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output             |
-| `gd 3 -p \| grep TODO` | Last three commits filtered for `TODO`               | Standard output             |
-| `gd -o review-patches` | Unstaged tracked changes with an output override     | `review-patches/diff.patch` |
-| `gd --quiet`           | Unstaged tracked changes without a success message   | `diff.patch`                |
+| Command                | Meaning                                              | Default Output                   |
+| ---------------------- | ---------------------------------------------------- | -------------------------------- |
+| `gd`                   | Unstaged tracked changes                             | `unstaged.diff`                  |
+| `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`                  |
+| `gd s` / `gd staged`   | Staged tracked changes                               | `staged.diff`                    |
+| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.diff`               |
+| `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch.diff`                    |
+| `gd b develop`         | Current-branch changes relative to `develop`         | `branch.diff`                    |
+| `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`               |
+| `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`            |
+| `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
+| `gd 3 -p \| grep TODO` | Last three commits filtered for `TODO`               | Standard output                  |
+| `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
+| `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
 
 `--stdout`/`-p` cannot be combined with `--output-dir`/`-o`. In stdout mode,
-`gd` emits only patch bytes on stdout; errors remain on stderr.
+`gd` emits only diff bytes on stdout; errors remain on stderr.
 
 `gd a`/`gd all` compares against `HEAD` in a normal repository and against
 Git's empty tree before the first commit. Genuinely untracked files are still
@@ -29,12 +29,12 @@ excluded.
 
 `gd` delegates diff semantics to the installed `git` executable.
 
-Generated patches are commonly written inside a repository working tree.
+Generated diffs are commonly written inside a repository working tree.
 Consider adding this pattern to that repository's `.gitignore` or to your
 global Git ignore configuration:
 
 ```gitignore
-*.patch
+*.diff
 ```
 
 `gd` does not modify repositories or ignore files automatically.
@@ -73,6 +73,6 @@ restores normal success messages.
 ## Output safety
 
 File output is streamed into a temporary file in the destination directory. A
-successful non-empty diff atomically replaces the named patch. A successful
+successful non-empty diff atomically replaces the named diff. A successful
 empty diff removes a stale destination. A failed Git command leaves any
 existing destination unchanged.

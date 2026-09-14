@@ -36,7 +36,7 @@ fn branch_aliases_fall_back_to_local_main() {
 
     for alias in ["b", "branch"] {
         repo.gd_in(&[alias]).unwrap();
-        assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+        assert_eq!(patch(&repo, "branch.diff"), expected);
     }
 }
 
@@ -46,7 +46,7 @@ fn branch_mode_falls_back_to_local_master() {
     let expected = repo.git(["diff", "--no-color", "master...HEAD"]).stdout;
 
     repo.gd_in(&["b"]).unwrap();
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn detected_branch_stdout_matches_git() {
     assert_success(&output);
     assert_eq!(output.stdout, expected);
     assert!(output.stderr.is_empty());
-    assert!(!repo.path().join("branch-diff.patch").exists());
+    assert!(!repo.path().join("branch.diff").exists());
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn configured_base_precedes_remote_detection() {
     .unwrap();
 
     let expected = repo.git(["diff", "--no-color", "develop...HEAD"]).stdout;
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn cli_base_precedes_configured_base() {
     .unwrap();
 
     let expected = repo.git(["diff", "--no-color", "develop...HEAD"]).stdout;
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn remote_symbolic_head_selects_remote_tracking_custom_default() {
         .stdout;
 
     repo.gd_in(&["b"]).unwrap();
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn detached_head_can_use_local_main_fallback() {
     let expected = repo.git(["diff", "--no-color", "main...HEAD"]).stdout;
 
     repo.gd_in(&["b"]).unwrap();
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn sole_nonstandard_branch_reports_missing_detectable_base() {
         "{stderr}"
     );
     assert!(stderr.contains("configure base_branch"), "{stderr}");
-    assert!(!repo.path().join("branch-diff.patch").exists());
+    assert!(!repo.path().join("branch.diff").exists());
 }
 
 #[test]
@@ -205,7 +205,7 @@ fn remote_setting_without_an_upstream_does_not_override_origin() {
     let expected = repo.git(["diff", "--no-color", "main...HEAD"]).stdout;
 
     repo.gd_in(&["b"]).unwrap();
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn actual_upstream_remote_precedes_origin() {
     let expected = repo.git(["diff", "--no-color", "develop...HEAD"]).stdout;
 
     repo.gd_in(&["b"]).unwrap();
-    assert_eq!(patch(&repo, "branch-diff.patch"), expected);
+    assert_eq!(patch(&repo, "branch.diff"), expected);
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn remote_default_prefers_a_dangling_equivalent_local_branch() {
 
     repo.gd_in(&["b"]).unwrap();
     assert_eq!(
-        patch(&repo, "branch-diff.patch"),
+        patch(&repo, "branch.diff"),
         repo.git(["diff", "--no-color", "main...HEAD"]).stdout
     );
 }

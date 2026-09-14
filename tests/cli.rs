@@ -99,13 +99,14 @@ fn binary_reports_application_mode_validation_errors() {
 #[test]
 fn generates_expected_filenames() {
     for (mode, expected) in [
-        (Mode::Default, "diff.patch"),
-        (Mode::Unstaged, "unstaged.patch"),
-        (Mode::Staged, "staged.patch"),
-        (Mode::All, "uncommitted.patch"),
-        (Mode::Branch(None), "branch-diff.patch"),
-        (Mode::Commits(1), "last-commit.patch"),
-        (Mode::Commits(10), "last-10-commits.patch"),
+        (Mode::Default, "unstaged.diff"),
+        (Mode::Unstaged, "unstaged.diff"),
+        (Mode::Staged, "staged.diff"),
+        (Mode::All, "uncommitted.diff"),
+        (Mode::Branch(None), "branch.diff"),
+        (Mode::Branch(Some("develop".into())), "branch.diff"),
+        (Mode::Commits(1), "last-commit.diff"),
+        (Mode::Commits(10), "last-10-commits.diff"),
     ] {
         assert_eq!(mode.filename(), expected);
     }
@@ -145,6 +146,8 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("Usage: gd [OPTIONS] [MODE]\n"));
     assert!(help.contains("  gd [OPTIONS] {b|branch} [BASE]\n"));
     assert!(help.contains("[MODE]  Diff mode:"));
+    assert!(help.contains("Write the raw diff to stdout"));
+    assert!(help.contains("Directory in which to write the diff file"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));
     assert!(help.contains("Examples:"));

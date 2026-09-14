@@ -1,5 +1,5 @@
 /target/
-*.patch
+*.diff
 packed-repo.xml
 packed-repo.xml.gz
 .bundlerepo.toml

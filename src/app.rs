@@ -134,7 +134,7 @@ fn run_to_file(
     let destination = output_dir.join(mode.filename());
     let temporary = NamedTempFile::new_in(output_dir).map_err(|error| {
         format!(
-            "cannot create temporary patch in '{}': {error}",
+            "cannot create temporary diff in '{}': {error}",
             output_dir.display()
         )
     })?;
@@ -159,7 +159,7 @@ fn run_to_file(
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(format!(
-                    "cannot remove stale patch '{}': {error}",
+                    "cannot remove stale diff '{}': {error}",
                     destination.display()
                 )
                 .into());
@@ -177,7 +177,7 @@ fn run_to_file(
 
     temporary.persist(&destination).map_err(|error| {
         format!(
-            "cannot replace patch '{}': {}",
+            "cannot replace diff '{}': {}",
             destination.display(),
             error.error
         )
