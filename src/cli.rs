@@ -15,7 +15,9 @@ fn after_help(name: &str) -> String {
   {name} 3               Write the last 3 commits to last-3-commits.diff
   {name} b               Write current-branch changes relative to the detected base
   {name} b develop       Write current-branch changes relative to develop
-  {name} s -p            Write the staged diff to stdout"#,
+  {name} s -p            Write the staged diff to stdout
+
+Piped or redirected stdout receives the raw diff automatically."#,
         "Examples:".bold().underline()
     )
 }
@@ -36,7 +38,7 @@ pub struct Cli {
     /// Base branch for branch mode.
     base: Option<String>,
 
-    /// Write the raw diff to stdout.
+    /// Force diff output to stdout.
     #[arg(short = 'p', long, conflicts_with = "output_dir")]
     pub stdout: bool,
 

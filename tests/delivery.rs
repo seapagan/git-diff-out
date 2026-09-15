@@ -3,7 +3,7 @@ mod common;
 #[path = "support/fake_program.rs"]
 mod fake_program;
 
-use std::{ffi::OsString, fs, io};
+use std::{ffi::OsString, fs, io, process::Stdio};
 
 use clap::Parser;
 use common::{Repo, assert_success, gd_command, patch};
@@ -207,6 +207,37 @@ fn stdout_mode_emits_only_raw_patch_and_creates_no_patch() {
     assert_eq!(output.stdout, expected);
     assert!(output.stderr.is_empty());
     assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn captured_stdout_selects_raw_diff_without_stdout_flag() {
+    let repo = changed_repo();
+    repo.commit_all("second");
+    let expected = repo.git(["diff", "--no-color", "HEAD~1..HEAD"]).stdout;
+
+    let output = repo.gd(&["1"]);
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert!(!repo.path().join("last-commit.diff").exists());
+}
+
+#[test]
+fn redirected_stdout_selects_raw_diff_without_creating_patch() {
+    let repo = changed_repo();
+    repo.commit_all("second");
+    let expected = repo.git(["diff", "--no-color", "HEAD~1..HEAD"]).stdout;
+    let redirected = repo.path().join("redirected.patch");
+
+    let output = gd_command(repo.path(), &["1"])
+        .stdout(Stdio::from(fs::File::create(&redirected).unwrap()))
+        .output()
+        .unwrap();
+    assert_success(&output);
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(redirected).unwrap(), expected);
+    assert!(!repo.path().join("last-commit.diff").exists());
 }
 
 #[test]

@@ -2,7 +2,7 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::{self, Read, Write},
+    io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -35,8 +35,13 @@ impl Environment {
     }
 }
 
-pub fn run_in(cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
+pub fn run_in(mut cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
+    cli.stdout = use_stdout(cli.stdout, io::stdout().is_terminal());
     run_in_with_writer(cli, environment, &mut io::stdout().lock())
+}
+
+fn use_stdout(explicit: bool, stdout_is_terminal: bool) -> bool {
+    explicit || !stdout_is_terminal
 }
 
 pub fn run_in_with_writer(
@@ -246,5 +251,18 @@ fn format_size(bytes: u64) -> String {
         format!("{bytes} B")
     } else {
         format!("{:.1} KiB", bytes as f64 / 1024.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::use_stdout;
+
+    #[test]
+    fn stdout_selection_respects_terminal_and_explicit_flag() {
+        assert!(!use_stdout(false, true));
+        assert!(use_stdout(true, true));
+        assert!(use_stdout(false, false));
+        assert!(use_stdout(true, false));
     }
 }

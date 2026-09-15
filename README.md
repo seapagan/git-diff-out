@@ -92,7 +92,7 @@ Windows adds the `.exe` suffix to both paths.
 
 ## Usage
 
-| Command                | Meaning                                              | Default Output                   |
+| Command                | Meaning                                              | Default Output (terminal)        |
 | ---------------------- | ---------------------------------------------------- | -------------------------------- |
 | `gd`                   | Unstaged tracked changes                             | `unstaged.diff`                  |
 | `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`                  |
@@ -103,12 +103,15 @@ Windows adds the `.exe` suffix to both paths.
 | `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`               |
 | `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`            |
 | `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
-| `gd 3 -p \| grep TODO` | Last three commits filtered for `TODO`               | Standard output                  |
+| `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output                  |
 | `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
 | `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
 
-`--stdout`/`-p` cannot be combined with `--output-dir`/`-o`. In stdout mode,
-`gd` emits only diff bytes on stdout; errors remain on stderr.
+When stdout is piped, redirected, or captured, `gd` sends the raw diff to stdout
+automatically instead of creating a `.diff` file. Use `--stdout`/`-p` to force
+stdout in an interactive terminal. The flag cannot be combined with
+`--output-dir`/`-o`. In stdout mode, `gd` emits only diff bytes on stdout;
+errors remain on stderr.
 
 `gd a`/`gd all` compares against `HEAD` in a normal repository and against
 Git's empty tree before the first commit. Genuinely untracked files are still

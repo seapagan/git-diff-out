@@ -146,7 +146,7 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("Usage: gd [OPTIONS] [MODE]\n"));
     assert!(help.contains("  gd [OPTIONS] {b|branch} [BASE]\n"));
     assert!(help.contains("[MODE]  Diff mode:"));
-    assert!(help.contains("Write the raw diff to stdout"));
+    assert!(help.contains("Force diff output to stdout"));
     assert!(help.contains("Directory in which to write the diff file"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));
