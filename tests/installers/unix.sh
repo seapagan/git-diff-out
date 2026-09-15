@@ -79,7 +79,9 @@ assert_asset x86_64-unknown-linux-gnu
 ! grep -q '/releases/latest' "$TEST_LOG" || fail 'GD_VERSION fetched latest'
 grep -q 'new gd' "$GD_INSTALL_DIR/gd" || fail 'gd was not replaced'
 grep -q 'new git-diff-out' "$GD_INSTALL_DIR/git-diff-out" || fail 'git-diff-out was not replaced'
-test -x "$GD_INSTALL_DIR/gd" && test -x "$GD_INSTALL_DIR/git-diff-out" || fail 'binaries are not executable'
+if [ ! -x "$GD_INSTALL_DIR/gd" ] || [ ! -x "$GD_INSTALL_DIR/git-diff-out" ]; then
+    fail 'binaries are not executable'
+fi
 grep -q 'add it to PATH' "$root/output" || fail 'missing PATH warning'
 
 GD_VERSION=v0.1.0
@@ -107,7 +109,9 @@ assert_asset x86_64-apple-darwin
 TEST_BIN=$root/bin
 GD_INSTALL_DIR="$root/new bin"
 run_install
-test -x "$GD_INSTALL_DIR/gd" && test -x "$GD_INSTALL_DIR/git-diff-out" || fail 'install directory was not created'
+if [ ! -x "$GD_INSTALL_DIR/gd" ] || [ ! -x "$GD_INSTALL_DIR/git-diff-out" ]; then
+    fail 'install directory was not created'
+fi
 TEST_BIN="$root/bin:$GD_INSTALL_DIR"
 run_install
 ! grep -q 'add it to PATH' "$root/output" || fail 'PATH warning appeared for an existing entry'

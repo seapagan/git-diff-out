@@ -39,7 +39,14 @@ try {
     $env:GD_VERSION = ''
     $env:PATH = $originalPath
 
-    $output = & { . "$PSScriptRoot/../../install.ps1" } 3>&1 | Out-String
+    $output = & {
+        $ErrorActionPreference = 'Continue'
+        $callerErrorActionPreference = $ErrorActionPreference
+        . "$PSScriptRoot/../../install.ps1"
+        Assert ($ErrorActionPreference -eq $callerErrorActionPreference) 'installer changed caller ErrorActionPreference'
+        $installerCommand = Get-Command Install-GitDiffOut -ErrorAction SilentlyContinue
+        Assert (-not $installerCommand) 'installer function leaked into caller scope'
+    } 3>&1 | Out-String
     Assert ($script:LatestCalls -eq 1) 'latest release was not fetched'
     Assert ($script:AssetUrl -like '*/releases/download/0.2.0/git-diff-out-v0.2.0-x86_64-pc-windows-msvc.zip') 'wrong latest asset'
     Assert ($output -match 'add it to PATH') 'missing PATH warning'

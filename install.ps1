@@ -1,6 +1,7 @@
-$ErrorActionPreference = 'Stop'
+& {
+    $ErrorActionPreference = 'Stop'
 
-function Install-GitDiffOut {
+    function Install-GitDiffOut {
     $architecture = (Get-CimInstance Win32_Processor | Select-Object -First 1).Architecture
     if ($architecture -ne 9) {
         throw "error: unsupported Windows architecture: $architecture"
@@ -43,6 +44,7 @@ function Install-GitDiffOut {
     if (($env:PATH -split [System.IO.Path]::PathSeparator) -notcontains $installDir) {
         Write-Warning "$installDir is not on PATH; add it to PATH to use gd and git-diff-out."
     }
-}
+    }
 
-Install-GitDiffOut
+    Install-GitDiffOut
+}
