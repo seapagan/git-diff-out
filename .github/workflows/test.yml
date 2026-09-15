@@ -116,6 +116,13 @@ jobs:
       - name: Build native Linux targets
         run: cargo make unix-build
 
+      - name: Check and test Unix installer
+        env:
+          EXPECTED_INSTALL_TARGET: x86_64-unknown-linux-gnu
+        run: |
+          cargo make installers-shellcheck
+          cargo make unix-installer-test
+
       - name: Validate Linux coverage
         shell: bash
         run: |
@@ -231,6 +238,11 @@ jobs:
       - name: Build native macOS targets
         run: cargo make unix-build
 
+      - name: Test native macOS installer target
+        env:
+          EXPECTED_INSTALL_TARGET: ${{ matrix.target }}
+        run: cargo make unix-installer-test
+
   windows:
     name: Native Windows
     runs-on: windows-latest
@@ -286,6 +298,9 @@ jobs:
 
       - name: Build native Windows targets
         run: cargo make windows-build
+
+      - name: Test Windows installer
+        run: cargo make windows-installer-test
 
       - name: Normalize Windows coverage paths
         shell: pwsh

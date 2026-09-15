@@ -118,6 +118,12 @@ description = "Validate GitHub Actions syntax and embedded shell with ShellCheck
 dependencies = ["shellcheck-present"]
 command = "actionlint"
 
+[tasks.installers-shellcheck]
+description = "Check the Unix installer and its test script with ShellCheck"
+dependencies = ["shellcheck-present"]
+command = "shellcheck"
+args = ["install.sh", "tests/installers/unix.sh"]
+
 [tasks.zizmor]
 description = "Audit GitHub Actions workflows with the pedantic persona"
 command = "zizmor"
@@ -235,6 +241,12 @@ dependencies = ["_require-unix"]
 command = "cargo"
 args = ["build", "--all-targets", "--all-features", "--locked"]
 
+[tasks.unix-installer-test]
+description = "Test the Unix installer with local release archives"
+dependencies = ["_require-unix"]
+command = "sh"
+args = ["tests/installers/unix.sh"]
+
 # Native Windows
 
 [tasks.windows-check]
@@ -268,6 +280,12 @@ description = "Build all targets and features on a native Windows host"
 dependencies = ["_require-windows"]
 command = "cargo"
 args = ["build", "--all-targets", "--all-features", "--locked"]
+
+[tasks.windows-installer-test]
+description = "Test the Windows installer with a local release archive"
+dependencies = ["_require-windows"]
+command = "pwsh"
+args = ["-NoProfile", "-File", "tests/installers/windows.ps1"]
 
 # Linux-hosted Windows MSVC cross-verification
 
@@ -338,6 +356,8 @@ description = "Run complete native Unix verification"
 dependencies = [
   "_require-unix",
   "verify-common",
+  "installers-shellcheck",
+  "unix-installer-test",
   "unix-check",
   "unix-clippy",
   "unix-test",
@@ -349,6 +369,7 @@ description = "Run complete verification on a native Windows host"
 dependencies = [
   "_require-windows",
   "verify-common",
+  "windows-installer-test",
   "windows-check",
   "windows-clippy",
   "windows-test",

@@ -7,7 +7,31 @@ or raw stdout.
 
 ## Installation
 
-### cargo-binstall (recommended)
+### Install script (recommended)
+
+Linux and macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/seapagan/git-diff-out/main/install.sh | sh
+# or
+wget -qO- https://raw.githubusercontent.com/seapagan/git-diff-out/main/install.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/seapagan/git-diff-out/main/install.ps1 | iex
+```
+
+The installers require no Rust toolchain. They create the install directory and
+install both `gd` and `git-diff-out` (with `.exe` on Windows). Linux and macOS
+use `$XDG_BIN_HOME` when set, otherwise `~/.local/bin`; Windows uses
+`%USERPROFILE%\.local\bin`. Set `GD_INSTALL_DIR` to use another directory or
+`GD_VERSION` to install an exact release tag. The installers do not modify
+`PATH`; they warn if the directory is not already on it, leaving PATH setup to
+you.
+
+### cargo-binstall
 
 ```bash
 cargo binstall git-diff-out
