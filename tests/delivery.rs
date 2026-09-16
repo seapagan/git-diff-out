@@ -223,6 +223,26 @@ fn captured_stdout_selects_raw_diff_without_stdout_flag() {
 }
 
 #[test]
+fn explicit_output_directory_wins_when_stdout_is_captured() {
+    let repo = changed_repo();
+    repo.commit_all("second");
+    let expected = repo.git(["diff", "--no-color", "HEAD~1..HEAD"]).stdout;
+
+    let output = repo.gd(&["1", "--output-dir", "review-diffs"]);
+    assert_success(&output);
+    assert_eq!(
+        fs::read(repo.path().join("review-diffs/last-commit.diff")).unwrap(),
+        expected
+    );
+    assert!(
+        !output
+            .stdout
+            .windows(expected.len())
+            .any(|bytes| bytes == expected)
+    );
+}
+
+#[test]
 fn redirected_stdout_selects_raw_diff_without_creating_patch() {
     let repo = changed_repo();
     repo.commit_all("second");
