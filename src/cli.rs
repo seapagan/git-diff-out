@@ -16,6 +16,8 @@ fn after_help(name: &str) -> String {
   {name} b               Write current-branch changes relative to the detected base
   {name} b develop       Write current-branch changes relative to develop
   {name} s -p            Write the staged diff to stdout
+  {name} -c              Copy the unstaged diff to the clipboard
+  {name} -C              Copy and save the unstaged diff
 
 Piped or redirected stdout receives the raw diff automatically."#,
         "Examples:".bold().underline()
@@ -41,6 +43,14 @@ pub struct Cli {
     /// Force diff output to stdout.
     #[arg(short = 'p', long, conflicts_with = "output_dir")]
     pub stdout: bool,
+
+    /// Copy the diff to the clipboard without saving a diff file.
+    #[arg(short = 'c', long, conflicts_with_all = ["copy_save", "output_dir"])]
+    pub copy: bool,
+
+    /// Copy the diff to the clipboard and save the diff file.
+    #[arg(short = 'C', long, conflicts_with = "copy")]
+    pub copy_save: bool,
 
     /// Directory in which to write the diff file.
     #[arg(short = 'o', long, value_name = "PATH", conflicts_with = "stdout")]

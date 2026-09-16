@@ -10,6 +10,9 @@
 
 ## Future / evaluate
 
+- Once gd's clipboard API and cross-platform behavior are proven stable,
+  consider extracting the CLI-oriented backend routing and OSC 52 handling into
+  a standalone Rust crate for other short-lived command-line tools.
 - Shell completions for Bash, Zsh, Fish and PowerShell.
 - Man-page generation.
 - Investigate optional untracked-file support without compromising the thin-wrapper design.

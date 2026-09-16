@@ -1,5 +1,6 @@
 pub mod app;
 pub mod cli;
+mod clipboard;
 pub mod config;
 pub mod git;
 

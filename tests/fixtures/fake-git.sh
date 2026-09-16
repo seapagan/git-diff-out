@@ -1,6 +1,14 @@
 #!/bin/sh
 
 case "${0##*/}" in
+  wl-copy|xclip|xsel|pbcopy)
+    if [ -n "${GD_TEST_CLIPBOARD_FAIL:-}" ]; then
+      echo "provider display is unavailable" >&2
+      exit 17
+    fi
+    cat > "$GD_TEST_CLIPBOARD_OUTPUT"
+    exit 0
+    ;;
   hash-fails)
     if [ "$1" = rev-parse ]; then
       exit 1

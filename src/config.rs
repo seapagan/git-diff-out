@@ -15,6 +15,13 @@ pub struct Config {
     pub output_dir: PathBuf,
     pub quiet: bool,
     pub base_branch: Option<String>,
+    pub clipboard: ClipboardConfig,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClipboardConfig {
+    pub osc52_fallback: bool,
 }
 
 impl Default for Config {
@@ -23,6 +30,7 @@ impl Default for Config {
             output_dir: PathBuf::from("."),
             quiet: false,
             base_branch: None,
+            clipboard: ClipboardConfig::default(),
         }
     }
 }
