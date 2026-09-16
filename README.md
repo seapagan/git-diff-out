@@ -92,7 +92,7 @@ Windows adds the `.exe` suffix to both paths.
 
 ## Usage
 
-| Command                | Meaning                                              | Default Output (terminal)        |
+| Command                | Meaning                                              | Output                           |
 | ---------------------- | ---------------------------------------------------- | -------------------------------- |
 | `gd`                   | Unstaged tracked changes                             | `unstaged.diff`                  |
 | `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`                  |
@@ -108,10 +108,10 @@ Windows adds the `.exe` suffix to both paths.
 | `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
 
 When stdout is piped, redirected, or captured, `gd` sends the raw diff to stdout
-automatically instead of creating a `.diff` file. Use `--stdout`/`-p` to force
-stdout in an interactive terminal. The flag cannot be combined with
-`--output-dir`/`-o`. In stdout mode, `gd` emits only diff bytes on stdout;
-errors remain on stderr.
+automatically instead of creating a `.diff` file, unless CLI `--output-dir`/`-o`
+is supplied. Use `--stdout`/`-p` to force stdout in an interactive terminal. The
+flag cannot be combined with `--output-dir`/`-o`. In stdout mode, `gd` emits only
+diff bytes on stdout; errors remain on stderr.
 
 `gd a`/`gd all` compares against `HEAD` in a normal repository and against
 Git's empty tree before the first commit. Genuinely untracked files are still
@@ -156,9 +156,11 @@ base_branch = "develop"
 All configuration keys are optional. If `base_branch` is omitted, `gd`
 auto-detects the repository’s base/default branch.
 
-A relative `output_dir` is resolved from the current working directory. CLI
-`--quiet` or `--verbose` overrides configured `quiet`; `--verbose` only
-restores normal success messages.
+A configured `output_dir` sets the default location used by file-output mode; it
+does not force file output. CLI `--output-dir`/`-o` explicitly selects file
+output for that invocation. Relative output directories are resolved from the
+current working directory. CLI `--quiet` or `--verbose` overrides configured
+`quiet`; `--verbose` only restores normal success messages.
 
 ## Output safety
 

@@ -223,6 +223,22 @@ fn captured_stdout_selects_raw_diff_without_stdout_flag() {
 }
 
 #[test]
+fn configured_output_directory_does_not_suppress_captured_stdout() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    repo.write(
+        ".gd-test-home/git-diff-out/config.toml",
+        "output_dir = \"configured-diffs\"\n",
+    );
+
+    let output = repo.gd(&[]);
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert!(!repo.path().join("configured-diffs/unstaged.diff").exists());
+}
+
+#[test]
 fn explicit_output_directory_wins_when_stdout_is_captured() {
     let repo = changed_repo();
     repo.commit_all("second");
@@ -234,11 +250,9 @@ fn explicit_output_directory_wins_when_stdout_is_captured() {
         fs::read(repo.path().join("review-diffs/last-commit.diff")).unwrap(),
         expected
     );
-    assert!(
-        !output
-            .stdout
-            .windows(expected.len())
-            .any(|bytes| bytes == expected)
+    assert_eq!(
+        output.stdout,
+        format!("Wrote last-commit.diff ({} B)\n", expected.len()).as_bytes()
     );
 }
 
