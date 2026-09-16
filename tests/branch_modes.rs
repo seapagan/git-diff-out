@@ -98,13 +98,14 @@ fn configured_base_precedes_remote_detection() {
     let config_path = config_dir.path().join("config.toml");
     fs::write(&config_path, "base_branch = 'develop'\nquiet = true\n").unwrap();
     let cli = Cli::parse_from(["gd", "b"]);
-    app::run_in(
+    app::run_in_with_writer(
         cli,
         app::Environment {
             cwd: repo.path().to_path_buf(),
             config_path: Some(config_path),
             git_program: OsString::from("git"),
         },
+        &mut Vec::new(),
     )
     .unwrap();
 
@@ -120,13 +121,14 @@ fn cli_base_precedes_configured_base() {
     let config_path = config_dir.path().join("config.toml");
     fs::write(&config_path, "base_branch = 'alternate'\nquiet = true\n").unwrap();
     let cli = Cli::parse_from(["gd", "b", "develop"]);
-    app::run_in(
+    app::run_in_with_writer(
         cli,
         app::Environment {
             cwd: repo.path().to_path_buf(),
             config_path: Some(config_path),
             git_program: OsString::from("git"),
         },
+        &mut Vec::new(),
     )
     .unwrap();
 

@@ -2,7 +2,7 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::{self, Read, Write},
+    io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -35,8 +35,17 @@ impl Environment {
     }
 }
 
-pub fn run_in(cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
+pub fn run_in(mut cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
+    cli.stdout = use_stdout(
+        cli.stdout,
+        cli.output_dir.is_some(),
+        io::stdout().is_terminal(),
+    );
     run_in_with_writer(cli, environment, &mut io::stdout().lock())
+}
+
+fn use_stdout(explicit_stdout: bool, explicit_output_dir: bool, stdout_is_terminal: bool) -> bool {
+    explicit_stdout || (!explicit_output_dir && !stdout_is_terminal)
 }
 
 pub fn run_in_with_writer(
@@ -246,5 +255,44 @@ fn format_size(bytes: u64) -> String {
         format!("{bytes} B")
     } else {
         format!("{:.1} KiB", bytes as f64 / 1024.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use clap::Parser;
+
+    use super::use_stdout;
+    use crate::{
+        cli::Cli,
+        config::{Config, EffectiveConfig},
+    };
+
+    #[test]
+    fn stdout_selection_respects_explicit_cli_choices() {
+        assert!(!use_stdout(false, false, true));
+        assert!(use_stdout(true, false, true));
+        assert!(use_stdout(false, false, false));
+        assert!(use_stdout(true, false, false));
+        assert!(!use_stdout(false, true, true));
+        assert!(!use_stdout(false, true, false));
+    }
+
+    #[test]
+    fn configured_output_directory_does_not_suppress_automatic_stdout() {
+        let cli = Cli::parse_from(["gd"]);
+        let config = Config {
+            output_dir: "configured-diffs".into(),
+            quiet: false,
+            base_branch: None,
+        };
+
+        assert!(use_stdout(cli.stdout, cli.output_dir.is_some(), false));
+        assert_eq!(
+            EffectiveConfig::new(&config, &cli, Path::new("/repo")).output_dir,
+            Path::new("/repo/configured-diffs")
+        );
     }
 }
