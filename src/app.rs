@@ -19,6 +19,16 @@ use crate::{
 type CopyResult = Result<(), Box<dyn Error>>;
 type ClipboardWriter<'a> = dyn FnMut(&[u8], bool) -> CopyResult + 'a;
 
+struct MultipleOutputs<'a> {
+    environment: &'a Environment,
+    effective: &'a EffectiveConfig,
+    osc52_fallback: bool,
+    plan: OutputPlan,
+    stdout: &'a mut dyn Write,
+    messages: &'a mut dyn Write,
+    copy: &'a mut ClipboardWriter<'a>,
+}
+
 pub fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     run_in(cli, Environment::system()?)
 }
@@ -112,48 +122,27 @@ fn run_with_outputs(
     copy: &mut ClipboardWriter<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let mode = cli.mode()?;
-    if plan == OutputPlan::new(true, false, false) {
-        match &mode {
-            Mode::Branch(None) => {}
-            Mode::Branch(Some(base)) => {
-                return run_to_stdout(
-                    &mode,
-                    Some(base),
-                    &environment.cwd,
-                    &environment.git_program,
-                );
-            }
-            _ => {
-                return run_to_stdout(&mode, None, &environment.cwd, &environment.git_program);
-            }
-        }
+    if let Some(result) = stdout_without_config(&mode, &environment, plan) {
+        return result;
     }
 
-    let config = match environment.config_path {
-        Some(path) => Config::load(&path)?,
+    let config = match &environment.config_path {
+        Some(path) => Config::load(path)?,
         None => Config::default(),
     };
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
-    let base = match &mode {
-        Mode::Branch(Some(explicit)) => Some(explicit.clone()),
-        Mode::Branch(None) => Some(match config.base_branch {
-            Some(configured) => configured,
-            None => detect_base(&environment.cwd, &environment.git_program)?,
-        }),
-        _ => None,
-    };
+    let base = resolve_base(&mode, config.base_branch, &environment)?;
 
     if plan == OutputPlan::new(true, false, false) {
-        run_to_stdout(
+        return run_to_stdout(
             &mode,
             base.as_deref(),
             &environment.cwd,
             &environment.git_program,
-        )?;
-        return Ok(());
+        );
     }
     if plan == OutputPlan::new(false, true, false) {
-        run_to_file(
+        return run_to_file(
             &mode,
             base.as_deref(),
             &environment.cwd,
@@ -161,37 +150,99 @@ fn run_with_outputs(
             &effective.output_dir,
             effective.quiet,
             messages,
-        )?;
-        return Ok(());
+        );
     }
 
-    let payload = render_diff(
+    run_to_multiple_outputs(
         &mode,
         base.as_deref(),
+        MultipleOutputs {
+            environment: &environment,
+            effective: &effective,
+            osc52_fallback: config.clipboard.osc52_fallback,
+            plan,
+            stdout,
+            messages,
+            copy,
+        },
+    )
+}
+
+fn stdout_without_config(
+    mode: &Mode,
+    environment: &Environment,
+    plan: OutputPlan,
+) -> Option<Result<(), Box<dyn Error>>> {
+    if plan != OutputPlan::new(true, false, false) {
+        return None;
+    }
+    let base = match mode {
+        Mode::Branch(None) => return None,
+        Mode::Branch(Some(base)) => Some(base.as_str()),
+        _ => None,
+    };
+    Some(run_to_stdout(
+        mode,
+        base,
         &environment.cwd,
         &environment.git_program,
+    ))
+}
+
+fn resolve_base(
+    mode: &Mode,
+    configured: Option<String>,
+    environment: &Environment,
+) -> Result<Option<String>, Box<dyn Error>> {
+    match mode {
+        Mode::Branch(Some(explicit)) => Ok(Some(explicit.clone())),
+        Mode::Branch(None) => {
+            let base = match configured {
+                Some(base) => base,
+                None => detect_base(&environment.cwd, &environment.git_program)?,
+            };
+            Ok(Some(base))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn run_to_multiple_outputs(
+    mode: &Mode,
+    base: Option<&str>,
+    outputs: MultipleOutputs<'_>,
+) -> Result<(), Box<dyn Error>> {
+    let payload = render_diff(
+        mode,
+        base,
+        &outputs.environment.cwd,
+        &outputs.environment.git_program,
     )?;
     let mut errors = Vec::new();
-    if plan.file {
+    if outputs.plan.file {
         if let Err(error) = write_payload_to_file(
-            &mode,
-            &environment.cwd,
-            &environment.git_program,
-            &effective.output_dir,
-            effective.quiet || plan.stdout,
-            messages,
+            mode,
+            &outputs.environment.cwd,
+            &outputs.environment.git_program,
+            &outputs.effective.output_dir,
+            outputs.effective.quiet || outputs.plan.stdout,
+            outputs.messages,
             &payload,
         ) {
             errors.push(error.to_string());
         }
     }
-    if plan.stdout {
-        if let Err(error) = stdout.write_all(&payload).and_then(|()| stdout.flush()) {
+    if outputs.plan.stdout {
+        if let Err(error) = outputs
+            .stdout
+            .write_all(&payload)
+            .and_then(|()| outputs.stdout.flush())
+        {
             errors.push(format!("cannot write diff to stdout: {error}"));
         }
     }
-    if plan.clipboard {
-        if let Err(error) = copy(&payload, config.clipboard.osc52_fallback) {
+    if outputs.plan.clipboard {
+        if let Err(error) = (outputs.copy)(&payload, outputs.osc52_fallback) {
             errors.push(error.to_string());
         }
     }
@@ -323,26 +374,15 @@ fn finish_file(
     let destination = output_dir.join(mode.filename());
     let bytes = temporary.as_file().metadata()?.len();
     if bytes == 0 {
-        drop(temporary);
-        match fs::remove_file(&destination) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "cannot remove stale diff '{}': {error}",
-                    destination.display()
-                )
-                .into());
-            }
-        }
-        if !quiet {
-            let untracked = match mode {
-                Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
-                _ => 0,
-            };
-            writeln!(messages, "{}", empty_message(mode, untracked))?;
-        }
-        return Ok(());
+        return finish_empty_file(
+            mode,
+            cwd,
+            git_program,
+            quiet,
+            messages,
+            temporary,
+            &destination,
+        );
     }
 
     temporary.persist(&destination).map_err(|error| {
@@ -359,6 +399,37 @@ fn finish_file(
             mode.filename(),
             format_size(bytes)
         )?;
+    }
+    Ok(())
+}
+
+fn finish_empty_file(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    quiet: bool,
+    messages: &mut dyn Write,
+    temporary: NamedTempFile,
+    destination: &Path,
+) -> Result<(), Box<dyn Error>> {
+    drop(temporary);
+    match fs::remove_file(destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "cannot remove stale diff '{}': {error}",
+                destination.display()
+            )
+            .into());
+        }
+    }
+    if !quiet {
+        let untracked = match mode {
+            Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
+            _ => 0,
+        };
+        writeln!(messages, "{}", empty_message(mode, untracked))?;
     }
     Ok(())
 }

@@ -58,21 +58,8 @@ pub(crate) fn select_backend(selection: &Selection) -> Result<Backend, Clipboard
     if selection.ssh {
         return Ok(Backend::Osc52);
     }
-    match selection.platform {
-        Platform::Linux => {
-            if selection.wayland && selection.wl_copy {
-                return Ok(Backend::WlCopy);
-            }
-            if selection.x11 && selection.xclip {
-                return Ok(Backend::Xclip);
-            }
-            if selection.x11 && selection.xsel {
-                return Ok(Backend::Xsel);
-            }
-        }
-        Platform::Macos if selection.pbcopy => return Ok(Backend::Pbcopy),
-        Platform::Windows => return Ok(Backend::Windows),
-        Platform::Macos => {}
+    if let Some(backend) = local_backend(selection) {
+        return Ok(backend);
     }
     if selection.osc52_fallback {
         return Ok(Backend::Osc52);
@@ -82,6 +69,26 @@ pub(crate) fn select_backend(selection: &Selection) -> Result<Backend, Clipboard
         Platform::Macos => "the macOS clipboard provider 'pbcopy' is not available".into(),
         Platform::Windows => unreachable!("Windows always has a native backend"),
     }))
+}
+
+fn local_backend(selection: &Selection) -> Option<Backend> {
+    match selection.platform {
+        Platform::Linux => linux_backend(selection),
+        Platform::Macos => selection.pbcopy.then_some(Backend::Pbcopy),
+        Platform::Windows => Some(Backend::Windows),
+    }
+}
+
+fn linux_backend(selection: &Selection) -> Option<Backend> {
+    if selection.wayland && selection.wl_copy {
+        Some(Backend::WlCopy)
+    } else if selection.x11 && selection.xclip {
+        Some(Backend::Xclip)
+    } else if selection.x11 && selection.xsel {
+        Some(Backend::Xsel)
+    } else {
+        None
+    }
 }
 
 pub(crate) fn encode_osc52(payload: &[u8]) -> Result<Vec<u8>, ClipboardError> {
@@ -260,6 +267,51 @@ fn current_platform() -> Platform {
 }
 
 #[cfg(windows)]
+mod windows;
+
+#[cfg(any(windows, test))]
+trait WindowsClipboardApi {
+    type Memory: Copy;
+
+    fn open(&mut self) -> Result<(), ClipboardError>;
+    fn empty(&mut self) -> Result<(), ClipboardError>;
+    fn allocate(&mut self, bytes: usize) -> Result<Self::Memory, ClipboardError>;
+    fn write(&mut self, memory: Self::Memory, wide: &[u16]) -> Result<(), ClipboardError>;
+    fn set(&mut self, memory: Self::Memory) -> Result<(), ClipboardError>;
+    fn free(&mut self, memory: Self::Memory);
+    fn close(&mut self) -> Result<(), ClipboardError>;
+}
+
+#[cfg(any(windows, test))]
+fn copy_windows_with<Api: WindowsClipboardApi>(
+    payload: &[u8],
+    api: &mut Api,
+) -> Result<(), ClipboardError> {
+    let wide = utf16_nul(payload)?;
+    api.open()?;
+    let result = set_windows_data(api, &wide);
+    result.and(api.close())
+}
+
+#[cfg(any(windows, test))]
+fn set_windows_data<Api: WindowsClipboardApi>(
+    api: &mut Api,
+    wide: &[u16],
+) -> Result<(), ClipboardError> {
+    api.empty()?;
+    let memory = api.allocate(std::mem::size_of_val(wide))?;
+    if let Err(error) = api.write(memory, wide) {
+        api.free(memory);
+        return Err(error);
+    }
+    if let Err(error) = api.set(memory) {
+        api.free(memory);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 fn controlling_terminal() -> &'static Path {
     Path::new("CONOUT$")
 }
@@ -276,286 +328,8 @@ fn copy_windows(_payload: &[u8]) -> Result<(), ClipboardError> {
 
 #[cfg(windows)]
 fn copy_windows(payload: &[u8]) -> Result<(), ClipboardError> {
-    use std::ptr;
-    use windows_sys::Win32::{
-        Foundation::GlobalFree,
-        System::{
-            Console::GetConsoleWindow,
-            DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData},
-            Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock},
-            Ole::CF_UNICODETEXT,
-        },
-    };
-
-    let wide = utf16_nul(payload)?;
-    // SAFETY: The console window handle is checked before it owns the clipboard. The
-    // movable allocation is locked while its complete NUL-terminated UTF-16 payload is
-    // copied. It is freed on every pre-transfer failure and deliberately retained after
-    // SetClipboardData succeeds.
-    unsafe {
-        let owner = GetConsoleWindow();
-        if owner.is_null() {
-            return Err(ClipboardError(
-                "cannot open the Windows clipboard because gd has no console window".into(),
-            ));
-        }
-        if OpenClipboard(owner) == 0 {
-            return Err(last_windows_error("cannot open the Windows clipboard"));
-        }
-        let result = (|| {
-            if EmptyClipboard() == 0 {
-                return Err(last_windows_error("cannot empty the Windows clipboard"));
-            }
-            let memory = GlobalAlloc(GMEM_MOVEABLE, wide.len() * size_of::<u16>());
-            if memory.is_null() {
-                return Err(last_windows_error(
-                    "cannot allocate Windows clipboard memory",
-                ));
-            }
-            let locked = GlobalLock(memory).cast::<u16>();
-            if locked.is_null() {
-                let error = last_windows_error("cannot lock Windows clipboard memory");
-                GlobalFree(memory);
-                return Err(error);
-            }
-            ptr::copy_nonoverlapping(wide.as_ptr(), locked, wide.len());
-            GlobalUnlock(memory);
-            if SetClipboardData(u32::from(CF_UNICODETEXT), memory).is_null() {
-                let error = last_windows_error("cannot set Unicode Windows clipboard data");
-                GlobalFree(memory);
-                return Err(error);
-            }
-            Ok(())
-        })();
-        let close_result = if CloseClipboard() == 0 {
-            Err(last_windows_error("cannot close the Windows clipboard"))
-        } else {
-            Ok(())
-        };
-        result.and(close_result)
-    }
-}
-
-#[cfg(windows)]
-fn last_windows_error(context: &str) -> ClipboardError {
-    ClipboardError(format!("{context}: {}", std::io::Error::last_os_error()))
+    windows::copy(payload)
 }
 
 #[cfg(test)]
-mod tests {
-    #[cfg(unix)]
-    use super::run_provider;
-    use super::{
-        Backend, Platform, Selection, encode_osc52, provider_spec, select_backend, utf16_nul,
-        write_osc52, write_osc52_path,
-    };
-
-    fn local_linux() -> Selection {
-        Selection {
-            platform: Platform::Linux,
-            ssh: false,
-            wayland: false,
-            x11: false,
-            wl_copy: false,
-            xclip: false,
-            xsel: false,
-            pbcopy: false,
-            osc52_fallback: false,
-        }
-    }
-
-    #[test]
-    fn ssh_always_selects_osc52() {
-        for platform in [Platform::Linux, Platform::Macos, Platform::Windows] {
-            assert_eq!(
-                select_backend(&Selection {
-                    platform,
-                    ssh: true,
-                    ..local_linux()
-                })
-                .unwrap(),
-                Backend::Osc52
-            );
-        }
-    }
-
-    #[test]
-    fn linux_provider_selection_respects_the_display_session() {
-        let all = Selection {
-            wayland: true,
-            x11: true,
-            wl_copy: true,
-            xclip: true,
-            xsel: true,
-            ..local_linux()
-        };
-        assert_eq!(select_backend(&all).unwrap(), Backend::WlCopy);
-        assert_eq!(
-            select_backend(&Selection {
-                wl_copy: false,
-                ..all
-            })
-            .unwrap(),
-            Backend::Xclip
-        );
-        assert_eq!(
-            select_backend(&Selection {
-                wayland: false,
-                wl_copy: false,
-                xclip: false,
-                ..all
-            })
-            .unwrap(),
-            Backend::Xsel
-        );
-    }
-
-    #[test]
-    fn linux_does_not_invoke_a_provider_for_an_incompatible_session() {
-        let error = select_backend(&Selection {
-            wl_copy: true,
-            xclip: true,
-            xsel: true,
-            ..local_linux()
-        })
-        .unwrap_err()
-        .to_string();
-
-        assert!(error.contains("wl-clipboard"), "{error}");
-        assert!(error.contains("xclip"), "{error}");
-        assert!(error.contains("xsel"), "{error}");
-    }
-
-    #[test]
-    fn local_osc52_fallback_requires_opt_in() {
-        assert!(select_backend(&local_linux()).is_err());
-        assert_eq!(
-            select_backend(&Selection {
-                osc52_fallback: true,
-                ..local_linux()
-            })
-            .unwrap(),
-            Backend::Osc52
-        );
-    }
-
-    #[test]
-    fn macos_and_windows_use_native_backends() {
-        assert_eq!(
-            select_backend(&Selection {
-                platform: Platform::Macos,
-                pbcopy: true,
-                ..local_linux()
-            })
-            .unwrap(),
-            Backend::Pbcopy
-        );
-        assert_eq!(
-            select_backend(&Selection {
-                platform: Platform::Windows,
-                ..local_linux()
-            })
-            .unwrap(),
-            Backend::Windows
-        );
-    }
-
-    #[test]
-    fn osc52_encodes_arbitrary_utf8_for_the_standard_clipboard() {
-        assert_eq!(
-            encode_osc52("diff café 😀\n".as_bytes()).unwrap(),
-            b"\x1b]52;c;ZGlmZiBjYWbDqSDwn5iACg==\x1b\\"
-        );
-    }
-
-    #[test]
-    fn osc52_rejects_oversize_payloads_without_truncating() {
-        let sequence = encode_osc52(&vec![b'x'; 74_991]).unwrap();
-        assert_eq!(sequence.len(), 99_997);
-
-        let error = encode_osc52(&vec![b'x'; 74_992]).unwrap_err().to_string();
-        assert!(error.contains("74992 bytes"), "{error}");
-        assert!(error.contains("maximum is 74991 bytes"), "{error}");
-    }
-
-    #[test]
-    fn osc52_writes_only_to_the_supplied_terminal() {
-        let mut terminal = Vec::new();
-        write_osc52(b"diff\n", &mut terminal).unwrap();
-
-        assert_eq!(terminal, b"\x1b]52;c;ZGlmZgo=\x1b\\");
-    }
-
-    #[test]
-    fn osc52_reports_a_missing_controlling_terminal() {
-        let error = write_osc52_path(
-            std::path::Path::new("/definitely/missing/gd-controlling-terminal"),
-            b"diff",
-        )
-        .unwrap_err()
-        .to_string();
-
-        assert!(error.contains("controlling terminal"), "{error}");
-    }
-
-    #[test]
-    fn windows_text_conversion_preserves_unicode_and_adds_one_nul() {
-        assert_eq!(
-            utf16_nul("café 😀".as_bytes()).unwrap(),
-            [0x63, 0x61, 0x66, 0xe9, 0x20, 0xd83d, 0xde00, 0]
-        );
-    }
-
-    #[test]
-    fn windows_text_conversion_rejects_invalid_utf8_and_embedded_nul() {
-        assert!(utf16_nul(&[0xff]).is_err());
-        assert!(utf16_nul(b"before\0after").is_err());
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn providers_receive_the_exact_payload() {
-        let temp = tempfile::tempdir().unwrap();
-        let destination = temp.path().join("clipboard.bin");
-        let destination = destination.to_str().unwrap();
-        let payload = "diff café 😀\n".as_bytes();
-
-        run_provider(
-            "fake",
-            "/bin/sh",
-            &["-c", "cat > \"$1\"", "sh", destination],
-            payload,
-        )
-        .unwrap();
-
-        assert_eq!(std::fs::read(destination).unwrap(), payload);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn provider_failures_name_the_backend_and_status() {
-        let error = run_provider("fake", "/bin/sh", &["-c", "exit 7"], b"diff")
-            .unwrap_err()
-            .to_string();
-
-        assert!(
-            error.contains("clipboard provider 'fake' failed"),
-            "{error}"
-        );
-        assert!(error.contains('7'), "{error}");
-    }
-
-    #[test]
-    fn provider_commands_select_the_system_clipboard() {
-        assert_eq!(provider_spec(Backend::WlCopy), ("wl-copy", &[][..]));
-        assert_eq!(
-            provider_spec(Backend::Xclip),
-            ("xclip", &["-selection", "clipboard", "-in"][..])
-        );
-        assert_eq!(
-            provider_spec(Backend::Xsel),
-            ("xsel", &["--clipboard", "--input"][..])
-        );
-        assert_eq!(provider_spec(Backend::Pbcopy), ("pbcopy", &[][..]));
-    }
-}
+mod tests;
