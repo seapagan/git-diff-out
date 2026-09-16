@@ -146,7 +146,7 @@ fn write_osc52_path(path: &Path, payload: &[u8]) -> Result<(), ClipboardError> {
 }
 
 #[cfg(any(windows, test))]
-fn utf16_nul(payload: &[u8]) -> Result<Vec<u16>, ClipboardError> {
+fn clipboard_text(payload: &[u8]) -> Result<&str, ClipboardError> {
     let text = std::str::from_utf8(payload).map_err(|error| {
         ClipboardError(format!("clipboard content is not valid UTF-8: {error}"))
     })?;
@@ -155,7 +155,7 @@ fn utf16_nul(payload: &[u8]) -> Result<Vec<u16>, ClipboardError> {
             "clipboard content contains an embedded NUL character".into(),
         ));
     }
-    Ok(text.encode_utf16().chain([0]).collect())
+    Ok(text)
 }
 
 fn provider_spec(backend: Backend) -> (&'static str, &'static [&'static str]) {
@@ -267,51 +267,6 @@ fn current_platform() -> Platform {
 }
 
 #[cfg(windows)]
-mod windows;
-
-#[cfg(any(windows, test))]
-trait WindowsClipboardApi {
-    type Memory: Copy;
-
-    fn open(&mut self) -> Result<(), ClipboardError>;
-    fn empty(&mut self) -> Result<(), ClipboardError>;
-    fn allocate(&mut self, bytes: usize) -> Result<Self::Memory, ClipboardError>;
-    fn write(&mut self, memory: Self::Memory, wide: &[u16]) -> Result<(), ClipboardError>;
-    fn set(&mut self, memory: Self::Memory) -> Result<(), ClipboardError>;
-    fn free(&mut self, memory: Self::Memory);
-    fn close(&mut self) -> Result<(), ClipboardError>;
-}
-
-#[cfg(any(windows, test))]
-fn copy_windows_with<Api: WindowsClipboardApi>(
-    payload: &[u8],
-    api: &mut Api,
-) -> Result<(), ClipboardError> {
-    let wide = utf16_nul(payload)?;
-    api.open()?;
-    let result = set_windows_data(api, &wide);
-    result.and(api.close())
-}
-
-#[cfg(any(windows, test))]
-fn set_windows_data<Api: WindowsClipboardApi>(
-    api: &mut Api,
-    wide: &[u16],
-) -> Result<(), ClipboardError> {
-    api.empty()?;
-    let memory = api.allocate(std::mem::size_of_val(wide))?;
-    if let Err(error) = api.write(memory, wide) {
-        api.free(memory);
-        return Err(error);
-    }
-    if let Err(error) = api.set(memory) {
-        api.free(memory);
-        return Err(error);
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
 fn controlling_terminal() -> &'static Path {
     Path::new("CONOUT$")
 }
@@ -328,7 +283,9 @@ fn copy_windows(_payload: &[u8]) -> Result<(), ClipboardError> {
 
 #[cfg(windows)]
 fn copy_windows(payload: &[u8]) -> Result<(), ClipboardError> {
-    windows::copy(payload)
+    let text = clipboard_text(payload)?;
+    clipboard_win::set_clipboard_string(text)
+        .map_err(|error| ClipboardError(format!("cannot set the Windows clipboard: {error}")))
 }
 
 #[cfg(test)]

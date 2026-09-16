@@ -126,10 +126,7 @@ fn run_with_outputs(
         return result;
     }
 
-    let config = match &environment.config_path {
-        Some(path) => Config::load(path)?,
-        None => Config::default(),
-    };
+    let config = load_config(environment.config_path.as_deref())?;
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
     let base = resolve_base(&mode, config.base_branch, &environment)?;
 
@@ -166,6 +163,13 @@ fn run_with_outputs(
             copy,
         },
     )
+}
+
+fn load_config(path: Option<&Path>) -> Result<Config, Box<dyn Error>> {
+    match path {
+        Some(path) => Ok(Config::load(path)?),
+        None => Ok(Config::default()),
+    }
 }
 
 fn stdout_without_config(
