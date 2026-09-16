@@ -136,6 +136,12 @@ description = "Verify the crate package using the lockfile"
 command = "cargo"
 args = ["package", "--locked"]
 
+[tasks._package-working-tree]
+private = true
+description = "Verify the current working tree as a crate package"
+command = "cargo"
+args = ["package", "--locked", "--allow-dirty"]
+
 [tasks.package-list]
 description = "List files included in the crate package"
 command = "cargo"
@@ -348,7 +354,7 @@ dependencies = [
   "deny",
   "actions-lint",
   "zizmor",
-  "package",
+  "_package-working-tree",
 ]
 
 [tasks.verify-unix]
