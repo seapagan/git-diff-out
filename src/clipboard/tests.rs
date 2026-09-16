@@ -124,19 +124,6 @@ fn osc52_encodes_arbitrary_utf8_for_the_standard_clipboard() {
 }
 
 #[test]
-fn osc52_rejects_oversize_payloads_without_truncating() {
-    let mut payload = Vec::new();
-    payload.resize(74_991, b'x');
-    let sequence = encode_osc52(&payload).unwrap();
-    assert_eq!(sequence.len(), 99_997);
-
-    payload.push(b'x');
-    let error = encode_osc52(&payload).unwrap_err().to_string();
-    assert!(error.contains("74992 bytes"), "{error}");
-    assert!(error.contains("maximum is 74991 bytes"), "{error}");
-}
-
-#[test]
 fn osc52_writes_only_to_the_supplied_terminal() {
     let mut terminal = Vec::new();
     write_osc52(b"diff\n", &mut terminal).unwrap();
@@ -217,4 +204,17 @@ fn provider_commands_select_the_system_clipboard() {
         ("xsel", &["--clipboard", "--input"][..])
     );
     assert_eq!(provider_spec(Backend::Pbcopy), ("pbcopy", &[][..]));
+}
+
+#[test]
+fn osc52_rejects_oversize_payloads_without_truncating() {
+    let mut payload = Vec::new();
+    payload.resize(74_991, b'x');
+    let sequence = encode_osc52(&payload).unwrap();
+    assert_eq!(sequence.len(), 99_997);
+
+    payload.push(b'x');
+    let error = encode_osc52(&payload).unwrap_err().to_string();
+    assert!(error.contains("74992 bytes"), "{error}");
+    assert!(error.contains("maximum is 74991 bytes"), "{error}");
 }
