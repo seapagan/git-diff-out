@@ -12,6 +12,7 @@ use std::{
 // TODO: Once gd's API and cross-platform behavior are proven stable, consider
 // extracting this CLI-oriented clipboard router into a standalone Rust crate.
 const OSC52_MAX_BYTES: usize = 74_991;
+type BackendWriter<'a> = dyn FnMut(Backend, &[u8]) -> Result<(), ClipboardError> + 'a;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Backend {
@@ -209,9 +210,18 @@ fn run_provider(
 pub(crate) fn copy(payload: &[u8], osc52_fallback: bool) -> Result<(), ClipboardError> {
     let selection = system_selection(osc52_fallback);
     let backend = select_backend(&selection)?;
-    let result = copy_with_backend(backend, payload);
-    if result.is_err() && osc52_fallback && backend == Backend::Windows {
-        return copy_with_backend(Backend::Osc52, payload);
+    copy_with_fallback(backend, payload, osc52_fallback, &mut copy_with_backend)
+}
+
+fn copy_with_fallback(
+    backend: Backend,
+    payload: &[u8],
+    osc52_fallback: bool,
+    copy_backend: &mut BackendWriter<'_>,
+) -> Result<(), ClipboardError> {
+    let result = copy_backend(backend, payload);
+    if result.is_err() && osc52_fallback && backend != Backend::Osc52 {
+        return copy_backend(Backend::Osc52, payload);
     }
     result
 }

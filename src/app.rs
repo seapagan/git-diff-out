@@ -245,7 +245,18 @@ fn run_to_multiple_outputs(
             errors.push(format!("cannot write diff to stdout: {error}"));
         }
     }
-    if outputs.plan.clipboard {
+    if payload.is_empty() && !outputs.plan.file {
+        if let Err(error) = write_empty_message(
+            mode,
+            &outputs.environment.cwd,
+            &outputs.environment.git_program,
+            outputs.effective.quiet || outputs.plan.stdout,
+            outputs.messages,
+        ) {
+            errors.push(error.to_string());
+        }
+    }
+    if outputs.plan.clipboard && !payload.is_empty() {
         if let Err(error) = (outputs.copy)(&payload, outputs.osc52_fallback) {
             errors.push(error.to_string());
         }
@@ -428,14 +439,24 @@ fn finish_empty_file(
             .into());
         }
     }
-    if !quiet {
-        let untracked = match mode {
-            Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
-            _ => 0,
-        };
-        writeln!(messages, "{}", empty_message(mode, untracked))?;
+    write_empty_message(mode, cwd, git_program, quiet, messages)
+}
+
+fn write_empty_message(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    quiet: bool,
+    messages: &mut dyn Write,
+) -> Result<(), Box<dyn Error>> {
+    if quiet {
+        return Ok(());
     }
-    Ok(())
+    let untracked = match mode {
+        Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
+        _ => 0,
+    };
+    writeln!(messages, "{}", empty_message(mode, untracked)).map_err(Into::into)
 }
 
 fn count_untracked(cwd: &Path, git_program: &OsString) -> Result<usize, Box<dyn Error>> {
@@ -635,6 +656,57 @@ mod tests {
                 assert_eq!(fs::read(saved).unwrap(), expected);
             }
         }
+    }
+
+    #[test]
+    fn empty_copy_does_not_touch_the_clipboard_and_reports_status() {
+        let repo = changed_repo();
+        fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+        let mut copied = false;
+        let mut messages = Vec::new();
+
+        run_with_outputs(
+            Cli::parse_from(["gd", "-c"]),
+            environment(repo.path()),
+            OutputPlan::new(false, false, true),
+            &mut Vec::new(),
+            &mut messages,
+            &mut |_payload, _fallback| {
+                copied = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(!copied);
+        assert_eq!(messages, b"No unstaged changes.\n");
+        assert!(!repo.path().join("unstaged.diff").exists());
+    }
+
+    #[test]
+    fn empty_copy_save_does_not_touch_the_clipboard_and_removes_stale_file() {
+        let repo = changed_repo();
+        fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+        fs::write(repo.path().join("unstaged.diff"), "stale\n").unwrap();
+        let mut copied = false;
+        let mut messages = Vec::new();
+
+        run_with_outputs(
+            Cli::parse_from(["gd", "-C"]),
+            environment(repo.path()),
+            OutputPlan::new(false, true, true),
+            &mut Vec::new(),
+            &mut messages,
+            &mut |_payload, _fallback| {
+                copied = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(!copied);
+        assert_eq!(messages, b"No unstaged changes.\n");
+        assert!(!repo.path().join("unstaged.diff").exists());
     }
 
     #[test]
