@@ -193,8 +193,8 @@ current working directory. CLI `--quiet` or `--verbose` overrides configured
 `quiet`; `--verbose` only restores normal success messages.
 
 `clipboard.osc52_fallback` is disabled by default. When enabled, a local session
-uses OSC 52 only if its normal OS clipboard backend is unavailable. SSH sessions
-always use OSC 52 regardless of this setting.
+uses OSC 52 if its normal OS clipboard backend is unavailable or fails at runtime.
+SSH sessions always use OSC 52 regardless of this setting.
 
 ## Output safety
 
