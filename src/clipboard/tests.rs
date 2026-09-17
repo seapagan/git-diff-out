@@ -215,6 +215,16 @@ fn windows_backend_rejects_invalid_utf8_before_clipboard_access() {
     assert!(error.contains("not valid UTF-8"), "{error}");
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_runtime_uses_the_native_platform_and_console() {
+    assert_eq!(super::current_platform(), Platform::Windows);
+    assert_eq!(
+        super::controlling_terminal(),
+        std::path::Path::new("CONOUT$")
+    );
+}
+
 #[test]
 fn osc52_rejects_oversize_payloads_without_truncating() {
     let mut payload = Vec::new();
