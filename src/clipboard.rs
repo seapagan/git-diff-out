@@ -314,4 +314,6 @@ fn copy_windows(payload: &[u8]) -> Result<(), ClipboardError> {
 #[cfg(test)]
 mod fallback_tests;
 #[cfg(test)]
+mod provider_tests;
+#[cfg(test)]
 mod tests;

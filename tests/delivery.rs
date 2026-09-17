@@ -441,13 +441,14 @@ fn stdout_failure_does_not_prevent_a_clipboard_write() {
 #[test]
 fn multi_output_render_failure_does_not_create_a_destination() {
     let repo = changed_repo();
+    let (_program_dir, program) = executable_script("diff-fails");
 
     let error = app::run_in_with_writer(
         Cli::parse_from(["gd", "-C"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
             config_path: None,
-            git_program: OsString::from("/bin/false"),
+            git_program: program.into_os_string(),
         },
         &mut Vec::new(),
     )
