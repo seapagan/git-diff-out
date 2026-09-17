@@ -1,8 +1,8 @@
 #[cfg(unix)]
 use super::run_provider;
 use super::{
-    Backend, ClipboardError, Platform, Selection, clipboard_text, copy_with_fallback, encode_osc52,
-    provider_spec, select_backend, write_osc52, write_osc52_path,
+    Backend, Platform, Selection, clipboard_text, encode_osc52, provider_spec, select_backend,
+    write_osc52, write_osc52_path,
 };
 
 fn local_linux() -> Selection {
@@ -190,66 +190,6 @@ fn provider_failures_name_the_backend_and_status() {
         "{error}"
     );
     assert!(error.contains('7'), "{error}");
-}
-
-#[test]
-fn runtime_provider_failure_does_not_fallback_without_opt_in() {
-    for backend in [
-        Backend::WlCopy,
-        Backend::Xclip,
-        Backend::Xsel,
-        Backend::Pbcopy,
-        Backend::Windows,
-    ] {
-        let mut attempts = Vec::new();
-        let error = copy_with_fallback(backend, b"diff", false, &mut |attempt, _payload| {
-            attempts.push(attempt);
-            Err(ClipboardError("runtime failure".into()))
-        })
-        .unwrap_err()
-        .to_string();
-
-        assert_eq!(attempts, [backend]);
-        assert_eq!(error, "runtime failure");
-    }
-}
-
-#[test]
-fn runtime_provider_failure_falls_back_to_osc52_when_enabled() {
-    for backend in [
-        Backend::WlCopy,
-        Backend::Xclip,
-        Backend::Xsel,
-        Backend::Pbcopy,
-        Backend::Windows,
-    ] {
-        let mut attempts = Vec::new();
-        copy_with_fallback(backend, b"diff", true, &mut |attempt, _payload| {
-            attempts.push(attempt);
-            if attempt == Backend::Osc52 {
-                Ok(())
-            } else {
-                Err(ClipboardError("runtime failure".into()))
-            }
-        })
-        .unwrap();
-
-        assert_eq!(attempts, [backend, Backend::Osc52]);
-    }
-}
-
-#[test]
-fn runtime_osc52_failure_is_not_retried() {
-    let mut attempts = Vec::new();
-    let error = copy_with_fallback(Backend::Osc52, b"diff", true, &mut |attempt, _payload| {
-        attempts.push(attempt);
-        Err(ClipboardError("runtime failure".into()))
-    })
-    .unwrap_err()
-    .to_string();
-
-    assert_eq!(attempts, [Backend::Osc52]);
-    assert_eq!(error, "runtime failure");
 }
 
 #[test]

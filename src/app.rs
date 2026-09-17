@@ -29,6 +29,55 @@ struct MultipleOutputs<'a> {
     copy: &'a mut ClipboardWriter<'a>,
 }
 
+impl MultipleOutputs<'_> {
+    fn write_file(&mut self, mode: &Mode, payload: &[u8], errors: &mut Vec<String>) {
+        if self.plan.file {
+            if let Err(error) = write_payload_to_file(
+                mode,
+                &self.environment.cwd,
+                &self.environment.git_program,
+                &self.effective.output_dir,
+                self.effective.quiet || self.plan.stdout,
+                self.messages,
+                payload,
+            ) {
+                errors.push(error.to_string());
+            }
+        }
+    }
+
+    fn write_stdout(&mut self, payload: &[u8], errors: &mut Vec<String>) {
+        if self.plan.stdout {
+            if let Err(error) = self
+                .stdout
+                .write_all(payload)
+                .and_then(|()| self.stdout.flush())
+            {
+                errors.push(format!("cannot write diff to stdout: {error}"));
+            }
+        }
+    }
+
+    fn write_clipboard(&mut self, mode: &Mode, payload: &[u8], errors: &mut Vec<String>) {
+        let result = if payload.is_empty() && !self.plan.file {
+            write_empty_message(
+                mode,
+                &self.environment.cwd,
+                &self.environment.git_program,
+                self.effective.quiet || self.plan.stdout,
+                self.messages,
+            )
+        } else if self.plan.clipboard && !payload.is_empty() {
+            (self.copy)(payload, self.osc52_fallback)
+        } else {
+            Ok(())
+        };
+        if let Err(error) = result {
+            errors.push(error.to_string());
+        }
+    }
+}
+
 pub fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     run_in(cli, Environment::system()?)
 }
@@ -214,7 +263,7 @@ fn resolve_base(
 fn run_to_multiple_outputs(
     mode: &Mode,
     base: Option<&str>,
-    outputs: MultipleOutputs<'_>,
+    mut outputs: MultipleOutputs<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let payload = render_diff(
         mode,
@@ -223,44 +272,9 @@ fn run_to_multiple_outputs(
         &outputs.environment.git_program,
     )?;
     let mut errors = Vec::new();
-    if outputs.plan.file {
-        if let Err(error) = write_payload_to_file(
-            mode,
-            &outputs.environment.cwd,
-            &outputs.environment.git_program,
-            &outputs.effective.output_dir,
-            outputs.effective.quiet || outputs.plan.stdout,
-            outputs.messages,
-            &payload,
-        ) {
-            errors.push(error.to_string());
-        }
-    }
-    if outputs.plan.stdout {
-        if let Err(error) = outputs
-            .stdout
-            .write_all(&payload)
-            .and_then(|()| outputs.stdout.flush())
-        {
-            errors.push(format!("cannot write diff to stdout: {error}"));
-        }
-    }
-    if payload.is_empty() && !outputs.plan.file {
-        if let Err(error) = write_empty_message(
-            mode,
-            &outputs.environment.cwd,
-            &outputs.environment.git_program,
-            outputs.effective.quiet || outputs.plan.stdout,
-            outputs.messages,
-        ) {
-            errors.push(error.to_string());
-        }
-    }
-    if outputs.plan.clipboard && !payload.is_empty() {
-        if let Err(error) = (outputs.copy)(&payload, outputs.osc52_fallback) {
-            errors.push(error.to_string());
-        }
-    }
+    outputs.write_file(mode, &payload, &mut errors);
+    outputs.write_stdout(&payload, &mut errors);
+    outputs.write_clipboard(mode, &payload, &mut errors);
     if errors.is_empty() {
         Ok(())
     } else {
