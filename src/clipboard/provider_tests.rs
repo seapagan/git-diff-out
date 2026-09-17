@@ -5,7 +5,14 @@ use super::{Backend, program_exists_in, provider_spec};
 #[test]
 fn provider_discovery_handles_missing_and_populated_paths() {
     let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("wl-copy"), []).unwrap();
+    let provider = temp.path().join("wl-copy");
+    std::fs::write(&provider, []).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(&provider, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
     let path = std::env::join_paths([temp.path()]).unwrap();
 
     assert!(!program_exists_in(None, std::ffi::OsStr::new("wl-copy")));
@@ -16,6 +23,23 @@ fn provider_discovery_handles_missing_and_populated_paths() {
     assert!(!program_exists_in(
         Some(path.as_os_str()),
         std::ffi::OsStr::new("xclip")
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn provider_discovery_rejects_non_executable_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let provider = temp.path().join("wl-copy");
+    std::fs::write(&provider, []).unwrap();
+    std::fs::set_permissions(&provider, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let path = std::env::join_paths([temp.path()]).unwrap();
+
+    assert!(!program_exists_in(
+        Some(path.as_os_str()),
+        std::ffi::OsStr::new("wl-copy")
     ));
 }
 

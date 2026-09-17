@@ -53,6 +53,9 @@ case "${0##*/}" in
     fi
     exit 9
     ;;
+  diff-fails)
+    exit 1
+    ;;
   reference-non-utf8)
     printf '\377'
     exit 0

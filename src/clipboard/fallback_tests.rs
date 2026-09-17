@@ -40,6 +40,24 @@ fn runtime_provider_failure_falls_back_to_osc52_when_enabled() {
 }
 
 #[test]
+fn failed_osc52_fallback_preserves_both_errors() {
+    let error = copy_with_fallback(WlCopy, b"diff", true, &mut |attempt, _payload| {
+        Err(ClipboardError(match attempt {
+            WlCopy => "provider failure".into(),
+            Osc52 => "OSC 52 failure".into(),
+            _ => unreachable!(),
+        }))
+    })
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "provider failure; OSC 52 fallback failed: OSC 52 failure"
+    );
+}
+
+#[test]
 fn runtime_osc52_failure_is_not_retried() {
     let mut attempts = Vec::new();
     let error = copy_with_fallback(Osc52, b"diff", true, &mut |attempt, _payload| {

@@ -104,7 +104,7 @@ Windows adds the `.exe` suffix to both paths.
 | `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`            |
 | `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
 | `gd -c`                | Copy unstaged tracked changes                         | Clipboard                        |
-| `gd -C`                | Copy and save unstaged tracked changes                | Clipboard and `unstaged.diff`    |
+| `gd -C`                | Copy and save unstaged changes (interactive TTY)      | Clipboard and `unstaged.diff`    |
 | `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output                  |
 | `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
 | `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |

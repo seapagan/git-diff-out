@@ -229,6 +229,7 @@ fn captured_stdout_selects_raw_diff_without_stdout_flag() {
 fn terminal_stdout_defaults_to_file_output() {
     let repo = changed_repo();
     let expected = repo.git(["diff", "--no-color"]).stdout;
+    let expected_message = format!("Wrote unstaged.diff ({} B)\r\n", expected.len());
     let isolated = repo.path().join(".gd-test-home");
     fs::create_dir_all(&isolated).unwrap();
 
@@ -251,7 +252,7 @@ fn terminal_stdout_defaults_to_file_output() {
 
     assert_success(&output);
     assert_eq!(patch(&repo, "unstaged.diff"), expected);
-    assert_eq!(output.stdout, b"Wrote unstaged.diff (132 B)\r\n");
+    assert_eq!(output.stdout, expected_message.as_bytes());
     assert!(output.stderr.is_empty());
 }
 

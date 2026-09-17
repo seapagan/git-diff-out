@@ -219,11 +219,16 @@ fn copy_with_fallback(
     osc52_fallback: bool,
     copy_backend: &mut BackendWriter<'_>,
 ) -> Result<(), ClipboardError> {
-    let result = copy_backend(backend, payload);
-    if result.is_err() && osc52_fallback && backend != Backend::Osc52 {
-        return copy_backend(Backend::Osc52, payload);
+    match copy_backend(backend, payload) {
+        Err(provider_error) if osc52_fallback && backend != Backend::Osc52 => {
+            copy_backend(Backend::Osc52, payload).map_err(|fallback_error| {
+                ClipboardError(format!(
+                    "{provider_error}; OSC 52 fallback failed: {fallback_error}"
+                ))
+            })
+        }
+        result => result,
     }
-    result
 }
 
 fn copy_with_backend(backend: Backend, payload: &[u8]) -> Result<(), ClipboardError> {
@@ -276,7 +281,24 @@ fn program_exists_in(path: Option<&OsStr>, program: &OsStr) -> bool {
     let Some(path) = path else {
         return false;
     };
-    env::split_paths(path).any(|directory| directory.join(program).is_file())
+    env::split_paths(path).any(|directory| {
+        let candidate = directory.join(program);
+        if !candidate.is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            candidate
+                .metadata()
+                .is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        }
+        #[cfg(not(unix))]
+        {
+            true
+        }
+    })
 }
 
 fn current_platform() -> Platform {
