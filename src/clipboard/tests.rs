@@ -205,6 +205,16 @@ fn windows_text_conversion_rejects_invalid_utf8_and_embedded_nul() {
     assert!(clipboard_text(b"before\0after").is_err());
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_backend_rejects_invalid_utf8_before_clipboard_access() {
+    let error = copy_with_backend_at(Backend::Windows, &[0xff], std::path::Path::new("unused"))
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("not valid UTF-8"), "{error}");
+}
+
 #[test]
 fn osc52_rejects_oversize_payloads_without_truncating() {
     let mut payload = Vec::new();

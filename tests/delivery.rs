@@ -224,6 +224,37 @@ fn captured_stdout_selects_raw_diff_without_stdout_flag() {
     assert!(!repo.path().join("last-commit.diff").exists());
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn terminal_stdout_defaults_to_file_output() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let isolated = repo.path().join(".gd-test-home");
+    fs::create_dir_all(&isolated).unwrap();
+
+    let output = std::process::Command::new("script")
+        .args([
+            "--quiet",
+            "--return",
+            "--command",
+            "exec \"$GD_TEST_BINARY\"",
+            "/dev/null",
+        ])
+        .current_dir(repo.path())
+        .env("GD_TEST_BINARY", env!("CARGO_BIN_EXE_gd"))
+        .env("HOME", &isolated)
+        .env("XDG_CONFIG_HOME", &isolated)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", common::null_device())
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(patch(&repo, "unstaged.diff"), expected);
+    assert_eq!(output.stdout, b"Wrote unstaged.diff (132 B)\r\n");
+    assert!(output.stderr.is_empty());
+}
+
 #[test]
 fn configured_output_directory_does_not_suppress_captured_stdout() {
     let repo = changed_repo();
