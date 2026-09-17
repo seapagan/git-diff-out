@@ -227,8 +227,16 @@ fn copy_with_fallback(
 }
 
 fn copy_with_backend(backend: Backend, payload: &[u8]) -> Result<(), ClipboardError> {
+    copy_with_backend_at(backend, payload, controlling_terminal())
+}
+
+fn copy_with_backend_at(
+    backend: Backend,
+    payload: &[u8],
+    terminal: &Path,
+) -> Result<(), ClipboardError> {
     match backend {
-        Backend::Osc52 => write_osc52_path(controlling_terminal(), payload),
+        Backend::Osc52 => write_osc52_path(terminal, payload),
         Backend::WlCopy | Backend::Xclip | Backend::Xsel | Backend::Pbcopy => {
             let (program, args) = provider_spec(backend);
             run_provider(program, program, args, payload)
@@ -260,10 +268,15 @@ fn env_nonempty(name: &str) -> bool {
 }
 
 fn program_exists(program: impl AsRef<OsStr>) -> bool {
-    let Some(path) = env::var_os("PATH") else {
+    let path = env::var_os("PATH");
+    program_exists_in(path.as_deref(), program.as_ref())
+}
+
+fn program_exists_in(path: Option<&OsStr>, program: &OsStr) -> bool {
+    let Some(path) = path else {
         return false;
     };
-    env::split_paths(&path).any(|directory| directory.join(program.as_ref()).is_file())
+    env::split_paths(path).any(|directory| directory.join(program).is_file())
 }
 
 fn current_platform() -> Platform {

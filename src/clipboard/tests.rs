@@ -1,8 +1,8 @@
 #[cfg(unix)]
 use super::run_provider;
 use super::{
-    Backend, Platform, Selection, clipboard_text, encode_osc52, provider_spec, select_backend,
-    write_osc52, write_osc52_path,
+    Backend, Platform, Selection, clipboard_text, copy_with_backend_at, encode_osc52,
+    program_exists_in, provider_spec, select_backend, write_osc52, write_osc52_path,
 };
 
 fn local_linux() -> Selection {
@@ -116,6 +116,21 @@ fn macos_and_windows_use_native_backends() {
 }
 
 #[test]
+fn macos_reports_when_pbcopy_is_unavailable() {
+    let error = select_backend(&Selection {
+        platform: Platform::Macos,
+        ..local_linux()
+    })
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "the macOS clipboard provider 'pbcopy' is not available"
+    );
+}
+
+#[test]
 fn osc52_encodes_arbitrary_utf8_for_the_standard_clipboard() {
     assert_eq!(
         encode_osc52("diff café 😀\n".as_bytes()).unwrap(),
@@ -141,6 +156,61 @@ fn osc52_reports_a_missing_controlling_terminal() {
     .to_string();
 
     assert!(error.contains("controlling terminal"), "{error}");
+}
+
+#[test]
+fn osc52_backend_writes_the_exact_sequence_to_a_terminal_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let terminal = temp.path().join("terminal");
+    std::fs::write(&terminal, []).unwrap();
+
+    copy_with_backend_at(Backend::Osc52, b"diff\n", &terminal).unwrap();
+
+    assert_eq!(
+        std::fs::read(terminal).unwrap(),
+        b"\x1b]52;c;ZGlmZgo=\x1b\\"
+    );
+}
+
+#[test]
+fn provider_discovery_handles_missing_and_populated_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("wl-copy"), []).unwrap();
+    let path = std::env::join_paths([temp.path()]).unwrap();
+
+    assert!(!program_exists_in(None, std::ffi::OsStr::new("wl-copy")));
+    assert!(program_exists_in(
+        Some(path.as_os_str()),
+        std::ffi::OsStr::new("wl-copy")
+    ));
+    assert!(!program_exists_in(
+        Some(path.as_os_str()),
+        std::ffi::OsStr::new("xclip")
+    ));
+}
+
+struct FailingWriter;
+
+impl std::io::Write for FailingWriter {
+    fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("terminal failed"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn osc52_reports_terminal_write_failures() {
+    let error = write_osc52(b"diff", &mut FailingWriter)
+        .unwrap_err()
+        .to_string();
+
+    assert_eq!(
+        error,
+        "cannot write OSC 52 to the controlling terminal: terminal failed"
+    );
 }
 
 #[test]
@@ -190,6 +260,38 @@ fn provider_failures_name_the_backend_and_status() {
         "{error}"
     );
     assert!(error.contains('7'), "{error}");
+}
+
+#[test]
+#[cfg(unix)]
+fn provider_startup_failures_name_the_backend() {
+    let error = run_provider(
+        "missing-provider",
+        "/definitely/missing/gd-clipboard-provider",
+        &[],
+        b"diff",
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(
+        error.starts_with("cannot start clipboard provider 'missing-provider':"),
+        "{error}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn provider_stdin_failures_name_the_backend() {
+    let payload = vec![b'x'; 1024 * 1024];
+    let error = run_provider("closed-stdin", "/bin/true", &[], &payload)
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.starts_with("cannot write to clipboard provider 'closed-stdin':"),
+        "{error}"
+    );
 }
 
 #[test]

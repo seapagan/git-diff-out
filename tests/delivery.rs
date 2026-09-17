@@ -307,6 +307,36 @@ fn copy_writes_the_exact_diff_and_keeps_captured_stdout_clean() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn xdg_wayland_session_selects_wl_copy_without_wayland_display() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env_remove("WAYLAND_DISPLAY")
+        .env("XDG_SESSION_TYPE", "WaYlAnD")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn copy_save_with_explicit_directory_writes_all_three_destinations() {
     let repo = changed_repo();
     let expected = repo.git(["diff", "--no-color"]).stdout;
@@ -371,6 +401,61 @@ fn clipboard_failure_is_nonzero_without_contaminating_diff_stdout() {
     );
     assert!(stderr.contains("wl-copy"), "{stderr}");
     assert!(!clipboard.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stdout_failure_does_not_prevent_a_clipboard_write() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+    let full = fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env("WAYLAND_DISPLAY", "wayland-test")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .stdout(Stdio::from(full))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot write diff to stdout"), "{stderr}");
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn multi_output_render_failure_does_not_create_a_destination() {
+    let repo = changed_repo();
+
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "-C"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: OsString::from("/bin/false"),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("git diff failed with"), "{error}");
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]
