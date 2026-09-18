@@ -506,7 +506,7 @@ fn empty_stdout_mode_is_silent_and_creates_no_patch() {
 }
 
 #[test]
-fn stdout_mode_without_a_branch_default_does_not_read_config() {
+fn no_header_stdout_without_a_branch_default_does_not_read_config() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
@@ -515,7 +515,7 @@ fn stdout_mode_without_a_branch_default_does_not_read_config() {
     fs::write(&config_path, "this is not toml").unwrap();
 
     app::run_in_with_writer(
-        Cli::parse_from(["gd", "--stdout"]),
+        Cli::parse_from(["gd", "--stdout", "--no-header"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
             config_path: Some(config_path),

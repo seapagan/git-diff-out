@@ -137,6 +137,33 @@ fn parses_clipboard_flags() {
 }
 
 #[test]
+fn parses_header_flags_and_note() {
+    for args in [
+        &["gd", "-H"][..],
+        &["gd", "--header"][..],
+        &["gd", "-N"][..],
+        &["gd", "--no-header"][..],
+        &["gd", "--note", "Check error paths"][..],
+    ] {
+        assert!(
+            Cli::try_parse_from(args).is_ok(),
+            "failed to parse {args:?}"
+        );
+    }
+}
+
+#[test]
+fn rejects_conflicting_header_flags() {
+    for args in [
+        &["gd", "--header", "--no-header"][..],
+        &["gd", "--no-header", "--note", "Check error paths"][..],
+    ] {
+        let error = Cli::try_parse_from(args).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+}
+
+#[test]
 fn rejects_conflicting_flags() {
     for args in [
         &["gd", "-p", "-o", "out"][..],
@@ -166,6 +193,10 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("Copy the diff to the clipboard without saving a diff file"));
     assert!(help.contains("Copy the diff to the clipboard and save the diff file"));
     assert!(help.contains("Directory in which to write the diff file"));
+    assert!(help.contains("-H, --header"));
+    assert!(help.contains("-N, --no-header"));
+    assert!(help.contains("--note <TEXT>"));
+    assert!(help.contains("Include an annotation header with note text"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));
     assert!(help.contains("Examples:"));
@@ -176,6 +207,7 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("gd b develop"));
     assert!(help.contains("gd s -p"));
     assert!(help.contains("current-branch changes relative to"));
+    assert!(help.contains("Use --no-header when a downstream tool requires a raw Git diff"));
 }
 
 #[test]

@@ -157,6 +157,77 @@ pub fn detect_base(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
     })
 }
 
+pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
+    let remotes = capture(git_program, cwd, ["remote"])?
+        .map(|value| value.lines().map(str::to_owned).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let current_branch = capture(
+        git_program,
+        cwd,
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )?;
+    let upstream = if let Some(branch) = current_branch {
+        capture(
+            git_program,
+            cwd,
+            [
+                "for-each-ref",
+                "--format=%(upstream:remotename)",
+                &format!("refs/heads/{branch}"),
+            ],
+        )?
+    } else {
+        None
+    };
+
+    let mut candidates = Vec::new();
+    if let Some(remote) = upstream {
+        candidates.push(remote);
+    }
+    candidates.push("origin".into());
+    candidates.extend(remotes);
+
+    let mut seen = HashSet::new();
+    for remote in candidates {
+        if !seen.insert(remote.clone()) {
+            continue;
+        }
+        if let Some(url) = capture(git_program, cwd, ["remote", "get-url", &remote])? {
+            if let Some(path) = remote_path(&url) {
+                return Ok(path);
+            }
+        }
+    }
+
+    let root = capture(git_program, cwd, ["rev-parse", "--show-toplevel"])?
+        .ok_or_else(|| "cannot determine the Git repository root".to_owned())?;
+    Path::new(&root)
+        .file_name()
+        .and_then(OsStr::to_str)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| "cannot determine the Git repository name".to_owned())
+}
+
+fn remote_path(url: &str) -> Option<String> {
+    let path = if let Some((_, address)) = url.split_once("://") {
+        let (host, path) = address.split_once('/')?;
+        if host.is_empty() {
+            return None;
+        }
+        path
+    } else {
+        let colon = url.rfind(':')?;
+        if url[..colon].contains('/') || url[..colon].contains('\\') {
+            return None;
+        }
+        &url[colon + 1..]
+    };
+    let path = path.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    (!path.is_empty()).then(|| path.to_owned())
+}
+
 fn capture<const N: usize>(
     git_program: &OsStr,
     cwd: &Path,

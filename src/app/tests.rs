@@ -140,6 +140,40 @@ fn copy_destinations_receive_the_same_rendered_payload() {
 }
 
 #[test]
+fn annotated_payload_is_identical_for_every_destination() {
+    let repo = changed_repo();
+    let status = Command::new("git")
+        .args(["remote", "add", "origin", "git@github.com:seapagan/gd.git"])
+        .current_dir(repo.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut stdout = Vec::new();
+    let mut copied = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "--header", "--note", "Review carefully"]),
+        environment(repo.path()),
+        OutputPlan::new(true, true, true),
+        &mut stdout,
+        &mut Vec::new(),
+        &mut |payload, _fallback| {
+            copied.extend_from_slice(payload);
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    let saved = fs::read(repo.path().join("unstaged.diff")).unwrap();
+    assert_eq!(stdout, copied);
+    assert_eq!(stdout, saved);
+    assert!(stdout.starts_with(
+        b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Review carefully\n\n"
+    ));
+    assert_eq!(stdout.iter().filter(|byte| **byte == b'#').count(), 3);
+}
+
+#[test]
 fn empty_copy_does_not_touch_the_clipboard_and_reports_status() {
     let repo = changed_repo();
     fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
