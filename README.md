@@ -103,15 +103,42 @@ Windows adds the `.exe` suffix to both paths.
 | `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`               |
 | `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`            |
 | `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
+| `gd -c`                | Copy unstaged tracked changes                         | Clipboard                        |
+| `gd -C`                | Copy and save unstaged changes (interactive TTY)      | Clipboard and `unstaged.diff`    |
 | `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output                  |
 | `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
 | `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
 
 When stdout is piped, redirected, or captured, `gd` sends the raw diff to stdout
-automatically instead of creating a `.diff` file, unless CLI `--output-dir`/`-o`
-is supplied. Use `--stdout`/`-p` to force stdout in an interactive terminal. The
-flag cannot be combined with `--output-dir`/`-o`. In stdout mode, `gd` emits only
-diff bytes on stdout; errors remain on stderr.
+automatically and suppresses its implicit `.diff` file. An explicit
+`--output-dir`/`-o` is still honoured, producing both stdout and the requested
+file. Use `--stdout`/`-p` to force stdout in an interactive terminal. The flag
+cannot be combined with `--output-dir`/`-o`. In stdout mode, `gd` emits only diff
+bytes on stdout; errors remain on stderr.
+
+`--copy`/`-c` copies the diff without creating gd's normal saved file and cannot
+be combined with `--output-dir`/`-o`. `--copy-save`/`-C` copies and saves when
+stdout is interactive. With non-interactive stdout it copies and writes stdout;
+only an explicit `--output-dir`/`-o` also saves. `-p -C` on an interactive
+terminal writes stdout, copies, and saves. Every selected destination receives
+the same rendered diff bytes, and failure in one destination does not undo a
+successful destination.
+
+## Clipboard support
+
+SSH sessions use OSC 52 automatically, writing the control sequence directly to
+the controlling terminal so stdout remains raw diff data. OSC 52 payloads are
+limited to 74,991 diff bytes, producing a complete Base64 control sequence under
+the established conservative 100,000-byte ceiling; larger payloads fail without
+truncation or partial clipboard output. The local terminal and any multiplexer
+must allow OSC 52 clipboard writes. Ghostty and current Zellij support this write
+path.
+
+Local Linux sessions prefer `wl-copy` on Wayland, then `xclip` or `xsel` with the
+X11 `CLIPBOARD` selection when an X display is available. Install `wl-clipboard`
+for Wayland or `xclip`/`xsel` for X11 if no provider is found. macOS uses
+`pbcopy`. Windows uses the native Unicode clipboard API. These system providers
+retain clipboard ownership after `gd` exits where the platform requires it.
 
 `gd a`/`gd all` compares against `HEAD` in a normal repository and against
 Git's empty tree before the first commit. Genuinely untracked files are still
@@ -151,6 +178,9 @@ configuration directory under `git-diff-out`:
 output_dir = "."
 quiet = false
 base_branch = "develop"
+
+[clipboard]
+osc52_fallback = false
 ```
 
 All configuration keys are optional. If `base_branch` is omitted, `gd`
@@ -161,6 +191,10 @@ does not force file output. CLI `--output-dir`/`-o` explicitly selects file
 output for that invocation. Relative output directories are resolved from the
 current working directory. CLI `--quiet` or `--verbose` overrides configured
 `quiet`; `--verbose` only restores normal success messages.
+
+`clipboard.osc52_fallback` is disabled by default. When enabled, a local session
+uses OSC 52 if its normal OS clipboard backend is unavailable or fails at runtime.
+SSH sessions always use OSC 52 regardless of this setting.
 
 ## Output safety
 

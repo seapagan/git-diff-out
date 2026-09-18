@@ -3,6 +3,8 @@ mod common;
 #[path = "support/fake_program.rs"]
 mod fake_program;
 
+#[cfg(target_os = "linux")]
+use std::env;
 use std::{ffi::OsString, fs, io, process::Stdio};
 
 use clap::Parser;
@@ -222,6 +224,38 @@ fn captured_stdout_selects_raw_diff_without_stdout_flag() {
     assert!(!repo.path().join("last-commit.diff").exists());
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn terminal_stdout_defaults_to_file_output() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let expected_message = format!("Wrote unstaged.diff ({} B)\r\n", expected.len());
+    let isolated = repo.path().join(".gd-test-home");
+    fs::create_dir_all(&isolated).unwrap();
+
+    let output = std::process::Command::new("script")
+        .args([
+            "--quiet",
+            "--return",
+            "--command",
+            "exec \"$GD_TEST_BINARY\"",
+            "/dev/null",
+        ])
+        .current_dir(repo.path())
+        .env("GD_TEST_BINARY", env!("CARGO_BIN_EXE_gd"))
+        .env("HOME", &isolated)
+        .env("XDG_CONFIG_HOME", &isolated)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", common::null_device())
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(patch(&repo, "unstaged.diff"), expected);
+    assert_eq!(output.stdout, expected_message.as_bytes());
+    assert!(output.stderr.is_empty());
+}
+
 #[test]
 fn configured_output_directory_does_not_suppress_captured_stdout() {
     let repo = changed_repo();
@@ -239,7 +273,7 @@ fn configured_output_directory_does_not_suppress_captured_stdout() {
 }
 
 #[test]
-fn explicit_output_directory_wins_when_stdout_is_captured() {
+fn explicit_output_directory_is_saved_alongside_captured_stdout() {
     let repo = changed_repo();
     repo.commit_all("second");
     let expected = repo.git(["diff", "--no-color", "HEAD~1..HEAD"]).stdout;
@@ -250,10 +284,8 @@ fn explicit_output_directory_wins_when_stdout_is_captured() {
         fs::read(repo.path().join("review-diffs/last-commit.diff")).unwrap(),
         expected
     );
-    assert_eq!(
-        output.stdout,
-        format!("Wrote last-commit.diff ({} B)\n", expected.len()).as_bytes()
-    );
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
@@ -272,6 +304,191 @@ fn redirected_stdout_selects_raw_diff_without_creating_patch() {
     assert!(output.stderr.is_empty());
     assert_eq!(fs::read(redirected).unwrap(), expected);
     assert!(!repo.path().join("last-commit.diff").exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn copy_writes_the_exact_diff_and_keeps_captured_stdout_clean() {
+    let repo = changed_repo();
+    repo.write("tracked.txt", "after café 😀\n");
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env("WAYLAND_DISPLAY", "wayland-test")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn xdg_wayland_session_selects_wl_copy_without_wayland_display() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env_remove("WAYLAND_DISPLAY")
+        .env("XDG_SESSION_TYPE", "WaYlAnD")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn copy_save_with_explicit_directory_writes_all_three_destinations() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+
+    let output = gd_command(repo.path(), &["-C", "-o", "out"])
+        .env("PATH", path)
+        .env("WAYLAND_DISPLAY", "wayland-test")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+    assert_eq!(
+        fs::read(repo.path().join("out/unstaged.diff")).unwrap(),
+        expected
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn clipboard_failure_is_nonzero_without_contaminating_diff_stdout() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env("WAYLAND_DISPLAY", "wayland-test")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env("GD_TEST_CLIPBOARD_FAIL", "1")
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.stdout, expected);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("provider display is unavailable"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("wl-copy"), "{stderr}");
+    assert!(!clipboard.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stdout_failure_does_not_prevent_a_clipboard_write() {
+    let repo = changed_repo();
+    let expected = repo.git(["diff", "--no-color"]).stdout;
+    let clipboard = repo.path().join("clipboard.bin");
+    let (programs, _wl_copy) = executable_script("wl-copy");
+    let path = env::join_paths(
+        std::iter::once(programs.path().to_path_buf())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+    let full = fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .unwrap();
+
+    let output = gd_command(repo.path(), &["-c"])
+        .env("PATH", path)
+        .env("WAYLAND_DISPLAY", "wayland-test")
+        .env("GD_TEST_CLIPBOARD_OUTPUT", &clipboard)
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .stdout(Stdio::from(full))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot write diff to stdout"), "{stderr}");
+    assert_eq!(fs::read(clipboard).unwrap(), expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn multi_output_render_failure_does_not_create_a_destination() {
+    let repo = changed_repo();
+    let (_program_dir, program) = executable_script("diff-fails");
+
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "-C"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("git diff failed with"), "{error}");
+    assert!(!repo.path().join("unstaged.diff").exists());
 }
 
 #[test]

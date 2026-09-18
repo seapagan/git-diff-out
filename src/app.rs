@@ -11,9 +11,72 @@ use tempfile::NamedTempFile;
 
 use crate::{
     cli::{Cli, Mode},
+    clipboard,
     config::{Config, EffectiveConfig},
     git::{detect_base, resolved_diff_args},
 };
+
+type CopyResult = Result<(), Box<dyn Error>>;
+type ClipboardWriter<'a> = dyn FnMut(&[u8], bool) -> CopyResult + 'a;
+
+struct MultipleOutputs<'a> {
+    environment: &'a Environment,
+    effective: &'a EffectiveConfig,
+    osc52_fallback: bool,
+    plan: OutputPlan,
+    stdout: &'a mut dyn Write,
+    messages: &'a mut dyn Write,
+    copy: &'a mut ClipboardWriter<'a>,
+}
+
+impl MultipleOutputs<'_> {
+    fn write_file(&mut self, mode: &Mode, payload: &[u8], errors: &mut Vec<String>) {
+        if self.plan.file {
+            if let Err(error) = write_payload_to_file(
+                mode,
+                &self.environment.cwd,
+                &self.environment.git_program,
+                &self.effective.output_dir,
+                self.effective.quiet || self.plan.stdout,
+                self.messages,
+                payload,
+            ) {
+                errors.push(error.to_string());
+            }
+        }
+    }
+
+    fn write_stdout(&mut self, payload: &[u8], errors: &mut Vec<String>) {
+        if self.plan.stdout {
+            if let Err(error) = self
+                .stdout
+                .write_all(payload)
+                .and_then(|()| self.stdout.flush())
+            {
+                errors.push(format!("cannot write diff to stdout: {error}"));
+            }
+        }
+    }
+
+    fn write_clipboard(&mut self, mode: &Mode, payload: &[u8], errors: &mut Vec<String>) {
+        let result = if payload.is_empty() && !self.plan.file {
+            write_empty_message(
+                mode,
+                &self.environment.cwd,
+                &self.environment.git_program,
+                self.effective.quiet || self.plan.stdout,
+                self.messages,
+            )
+        } else if self.plan.clipboard && !payload.is_empty() {
+            (self.copy)(payload, self.osc52_fallback)
+        } else {
+            Ok(())
+        };
+        if let Err(error) = result {
+            errors.push(error.to_string());
+        }
+    }
+}
 
 pub fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     run_in(cli, Environment::system()?)
@@ -23,6 +86,32 @@ pub struct Environment {
     pub cwd: PathBuf,
     pub config_path: Option<PathBuf>,
     pub git_program: OsString,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OutputPlan {
+    stdout: bool,
+    file: bool,
+    clipboard: bool,
+}
+
+impl OutputPlan {
+    const fn new(stdout: bool, file: bool, clipboard: bool) -> Self {
+        Self {
+            stdout,
+            file,
+            clipboard,
+        }
+    }
+}
+
+fn output_plan(cli: &Cli, stdout_is_terminal: bool) -> OutputPlan {
+    OutputPlan {
+        stdout: cli.stdout || !stdout_is_terminal,
+        file: cli.output_dir.is_some()
+            || (stdout_is_terminal && (!cli.stdout || cli.copy_save) && !cli.copy),
+        clipboard: cli.copy || cli.copy_save,
+    }
 }
 
 impl Environment {
@@ -35,17 +124,26 @@ impl Environment {
     }
 }
 
-pub fn run_in(mut cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
-    cli.stdout = use_stdout(
-        cli.stdout,
-        cli.output_dir.is_some(),
-        io::stdout().is_terminal(),
-    );
-    run_in_with_writer(cli, environment, &mut io::stdout().lock())
-}
-
-fn use_stdout(explicit_stdout: bool, explicit_output_dir: bool, stdout_is_terminal: bool) -> bool {
-    explicit_stdout || (!explicit_output_dir && !stdout_is_terminal)
+pub fn run_in(cli: Cli, environment: Environment) -> Result<(), Box<dyn Error>> {
+    let plan = output_plan(&cli, io::stdout().is_terminal());
+    if plan.stdout {
+        return run_with_outputs(
+            cli,
+            environment,
+            plan,
+            &mut io::stdout().lock(),
+            &mut io::sink(),
+            &mut |payload, fallback| clipboard::copy(payload, fallback).map_err(Into::into),
+        );
+    }
+    run_with_outputs(
+        cli,
+        environment,
+        plan,
+        &mut io::sink(),
+        &mut io::stdout().lock(),
+        &mut |payload, fallback| clipboard::copy(payload, fallback).map_err(Into::into),
+    )
 }
 
 pub fn run_in_with_writer(
@@ -53,47 +151,44 @@ pub fn run_in_with_writer(
     environment: Environment,
     messages: &mut dyn Write,
 ) -> Result<(), Box<dyn Error>> {
+    let plan = output_plan(&cli, true);
+    run_with_outputs(
+        cli,
+        environment,
+        plan,
+        &mut io::stdout().lock(),
+        messages,
+        &mut |payload, fallback| clipboard::copy(payload, fallback).map_err(Into::into),
+    )
+}
+
+fn run_with_outputs(
+    cli: Cli,
+    environment: Environment,
+    plan: OutputPlan,
+    stdout: &mut dyn Write,
+    messages: &mut dyn Write,
+    copy: &mut ClipboardWriter<'_>,
+) -> Result<(), Box<dyn Error>> {
     let mode = cli.mode()?;
-    if cli.stdout {
-        match &mode {
-            Mode::Branch(None) => {}
-            Mode::Branch(Some(base)) => {
-                return run_to_stdout(
-                    &mode,
-                    Some(base),
-                    &environment.cwd,
-                    &environment.git_program,
-                );
-            }
-            _ => {
-                return run_to_stdout(&mode, None, &environment.cwd, &environment.git_program);
-            }
-        }
+    if let Some(result) = stdout_without_config(&mode, &environment, plan) {
+        return result;
     }
 
-    let config = match environment.config_path {
-        Some(path) => Config::load(&path)?,
-        None => Config::default(),
-    };
+    let config = load_config(environment.config_path.as_deref())?;
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
-    let base = match &mode {
-        Mode::Branch(Some(explicit)) => Some(explicit.clone()),
-        Mode::Branch(None) => Some(match config.base_branch {
-            Some(configured) => configured,
-            None => detect_base(&environment.cwd, &environment.git_program)?,
-        }),
-        _ => None,
-    };
+    let base = resolve_base(&mode, config.base_branch, &environment)?;
 
-    if cli.stdout {
-        run_to_stdout(
+    if plan == OutputPlan::new(true, false, false) {
+        return run_to_stdout(
             &mode,
             base.as_deref(),
             &environment.cwd,
             &environment.git_program,
-        )?;
-    } else {
-        run_to_file(
+        );
+    }
+    if plan == OutputPlan::new(false, true, false) {
+        return run_to_file(
             &mode,
             base.as_deref(),
             &environment.cwd,
@@ -101,9 +196,108 @@ pub fn run_in_with_writer(
             &effective.output_dir,
             effective.quiet,
             messages,
-        )?;
+        );
     }
-    Ok(())
+
+    run_to_multiple_outputs(
+        &mode,
+        base.as_deref(),
+        MultipleOutputs {
+            environment: &environment,
+            effective: &effective,
+            osc52_fallback: config.clipboard.osc52_fallback,
+            plan,
+            stdout,
+            messages,
+            copy,
+        },
+    )
+}
+
+fn load_config(path: Option<&Path>) -> Result<Config, Box<dyn Error>> {
+    match path {
+        Some(path) => Ok(Config::load(path)?),
+        None => Ok(Config::default()),
+    }
+}
+
+fn stdout_without_config(
+    mode: &Mode,
+    environment: &Environment,
+    plan: OutputPlan,
+) -> Option<Result<(), Box<dyn Error>>> {
+    if plan != OutputPlan::new(true, false, false) {
+        return None;
+    }
+    let base = match mode {
+        Mode::Branch(None) => return None,
+        Mode::Branch(Some(base)) => Some(base.as_str()),
+        _ => None,
+    };
+    Some(run_to_stdout(
+        mode,
+        base,
+        &environment.cwd,
+        &environment.git_program,
+    ))
+}
+
+fn resolve_base(
+    mode: &Mode,
+    configured: Option<String>,
+    environment: &Environment,
+) -> Result<Option<String>, Box<dyn Error>> {
+    match mode {
+        Mode::Branch(Some(explicit)) => Ok(Some(explicit.clone())),
+        Mode::Branch(None) => {
+            let base = match configured {
+                Some(base) => base,
+                None => detect_base(&environment.cwd, &environment.git_program)?,
+            };
+            Ok(Some(base))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn run_to_multiple_outputs(
+    mode: &Mode,
+    base: Option<&str>,
+    mut outputs: MultipleOutputs<'_>,
+) -> Result<(), Box<dyn Error>> {
+    let payload = render_diff(
+        mode,
+        base,
+        &outputs.environment.cwd,
+        &outputs.environment.git_program,
+    )?;
+    let mut errors = Vec::new();
+    outputs.write_file(mode, &payload, &mut errors);
+    outputs.write_stdout(&payload, &mut errors);
+    outputs.write_clipboard(mode, &payload, &mut errors);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; ").into())
+    }
+}
+
+fn render_diff(
+    mode: &Mode,
+    base: Option<&str>,
+    cwd: &Path,
+    git_program: &OsString,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let output = Command::new(git_program)
+        .args(resolved_diff_args(mode, base, cwd, git_program)?)
+        .current_dir(cwd)
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("git diff failed with {}", output.status).into());
+    }
+    Ok(output.stdout)
 }
 
 fn run_to_stdout(
@@ -134,19 +328,7 @@ fn run_to_file(
     quiet: bool,
     messages: &mut dyn Write,
 ) -> Result<(), Box<dyn Error>> {
-    fs::create_dir_all(output_dir).map_err(|error| {
-        format!(
-            "cannot create output directory '{}': {error}",
-            output_dir.display()
-        )
-    })?;
-    let destination = output_dir.join(mode.filename());
-    let temporary = NamedTempFile::new_in(output_dir).map_err(|error| {
-        format!(
-            "cannot create temporary diff in '{}': {error}",
-            output_dir.display()
-        )
-    })?;
+    let temporary = create_output_file(output_dir)?;
     let patch_stdout = temporary.reopen()?;
     let status = Command::new(git_program)
         .args(resolved_diff_args(mode, base, cwd, git_program)?)
@@ -159,29 +341,77 @@ fn run_to_file(
     if !status.success() {
         return Err(format!("git diff failed with {status}").into());
     }
+    finish_file(
+        mode,
+        cwd,
+        git_program,
+        output_dir,
+        quiet,
+        messages,
+        temporary,
+    )
+}
 
+fn create_output_file(output_dir: &Path) -> Result<NamedTempFile, Box<dyn Error>> {
+    fs::create_dir_all(output_dir).map_err(|error| {
+        format!(
+            "cannot create output directory '{}': {error}",
+            output_dir.display()
+        )
+    })?;
+    NamedTempFile::new_in(output_dir)
+        .map_err(|error| {
+            format!(
+                "cannot create temporary diff in '{}': {error}",
+                output_dir.display()
+            )
+        })
+        .map_err(Into::into)
+}
+
+fn write_payload_to_file(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    output_dir: &Path,
+    quiet: bool,
+    messages: &mut dyn Write,
+    payload: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let mut temporary = create_output_file(output_dir)?;
+    temporary.write_all(payload)?;
+    finish_file(
+        mode,
+        cwd,
+        git_program,
+        output_dir,
+        quiet,
+        messages,
+        temporary,
+    )
+}
+
+fn finish_file(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    output_dir: &Path,
+    quiet: bool,
+    messages: &mut dyn Write,
+    temporary: NamedTempFile,
+) -> Result<(), Box<dyn Error>> {
+    let destination = output_dir.join(mode.filename());
     let bytes = temporary.as_file().metadata()?.len();
     if bytes == 0 {
-        drop(temporary);
-        match fs::remove_file(&destination) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "cannot remove stale diff '{}': {error}",
-                    destination.display()
-                )
-                .into());
-            }
-        }
-        if !quiet {
-            let untracked = match mode {
-                Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
-                _ => 0,
-            };
-            writeln!(messages, "{}", empty_message(mode, untracked))?;
-        }
-        return Ok(());
+        return finish_empty_file(
+            mode,
+            cwd,
+            git_program,
+            quiet,
+            messages,
+            temporary,
+            &destination,
+        );
     }
 
     temporary.persist(&destination).map_err(|error| {
@@ -200,6 +430,47 @@ fn run_to_file(
         )?;
     }
     Ok(())
+}
+
+fn finish_empty_file(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    quiet: bool,
+    messages: &mut dyn Write,
+    temporary: NamedTempFile,
+    destination: &Path,
+) -> Result<(), Box<dyn Error>> {
+    drop(temporary);
+    match fs::remove_file(destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "cannot remove stale diff '{}': {error}",
+                destination.display()
+            )
+            .into());
+        }
+    }
+    write_empty_message(mode, cwd, git_program, quiet, messages)
+}
+
+fn write_empty_message(
+    mode: &Mode,
+    cwd: &Path,
+    git_program: &OsString,
+    quiet: bool,
+    messages: &mut dyn Write,
+) -> Result<(), Box<dyn Error>> {
+    if quiet {
+        return Ok(());
+    }
+    let untracked = match mode {
+        Mode::Default | Mode::Unstaged | Mode::All => count_untracked(cwd, git_program)?,
+        _ => 0,
+    };
+    writeln!(messages, "{}", empty_message(mode, untracked)).map_err(Into::into)
 }
 
 fn count_untracked(cwd: &Path, git_program: &OsString) -> Result<usize, Box<dyn Error>> {
@@ -259,40 +530,4 @@ fn format_size(bytes: u64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use clap::Parser;
-
-    use super::use_stdout;
-    use crate::{
-        cli::Cli,
-        config::{Config, EffectiveConfig},
-    };
-
-    #[test]
-    fn stdout_selection_respects_explicit_cli_choices() {
-        assert!(!use_stdout(false, false, true));
-        assert!(use_stdout(true, false, true));
-        assert!(use_stdout(false, false, false));
-        assert!(use_stdout(true, false, false));
-        assert!(!use_stdout(false, true, true));
-        assert!(!use_stdout(false, true, false));
-    }
-
-    #[test]
-    fn configured_output_directory_does_not_suppress_automatic_stdout() {
-        let cli = Cli::parse_from(["gd"]);
-        let config = Config {
-            output_dir: "configured-diffs".into(),
-            quiet: false,
-            base_branch: None,
-        };
-
-        assert!(use_stdout(cli.stdout, cli.output_dir.is_some(), false));
-        assert_eq!(
-            EffectiveConfig::new(&config, &cli, Path::new("/repo")).output_dir,
-            Path::new("/repo/configured-diffs")
-        );
-    }
-}
+mod tests;

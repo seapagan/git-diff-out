@@ -15,6 +15,16 @@ fn missing_config_uses_defaults() {
     assert_eq!(config.output_dir, PathBuf::from("."));
     assert!(!config.quiet);
     assert_eq!(config.base_branch, None);
+    assert!(!config.clipboard.osc52_fallback);
+}
+
+#[test]
+fn loads_local_osc52_fallback_setting() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("config.toml");
+    fs::write(&path, "[clipboard]\nosc52_fallback = true\n").unwrap();
+
+    assert!(Config::load(&path).unwrap().clipboard.osc52_fallback);
 }
 
 #[test]

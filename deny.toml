@@ -24,6 +24,12 @@ allow = [
   "MPL-2.0",
   "Unicode-3.0",
 ]
+exceptions = [
+  # clipboard-win avoids project-owned Win32 FFI/unsafe code; error-code is
+  # its required transitive dependency.
+  { crate = "clipboard-win", allow = ["BSL-1.0"] },
+  { crate = "error-code", allow = ["BSL-1.0"] },
+]
 
 [sources]
 unknown-registry = "warn"

@@ -125,6 +125,18 @@ fn parses_delivery_and_quiet_flags() {
 }
 
 #[test]
+fn parses_clipboard_flags() {
+    let copy = parse(&["gd", "--copy"]);
+    assert!(copy.copy);
+    assert!(!copy.copy_save);
+
+    let copy_save = parse(&["gd", "--copy-save", "-o", "review-diffs"]);
+    assert!(!copy_save.copy);
+    assert!(copy_save.copy_save);
+    assert_eq!(copy_save.output_dir, Some(PathBuf::from("review-diffs")));
+}
+
+#[test]
 fn rejects_conflicting_flags() {
     for args in [
         &["gd", "-p", "-o", "out"][..],
@@ -134,6 +146,10 @@ fn rejects_conflicting_flags() {
         &["gd", "-q", "--verbose"][..],
         &["gd", "--quiet", "-v"][..],
         &["gd", "-vv"][..],
+        &["gd", "-c", "-C"][..],
+        &["gd", "--copy", "--copy-save"][..],
+        &["gd", "-c", "-o", "out"][..],
+        &["gd", "--copy", "--output-dir", "out"][..],
     ] {
         assert!(Cli::try_parse_from(args).is_err());
     }
@@ -147,6 +163,8 @@ fn help_describes_the_cli_grammar_and_generated_options() {
     assert!(help.contains("  gd [OPTIONS] {b|branch} [BASE]\n"));
     assert!(help.contains("[MODE]  Diff mode:"));
     assert!(help.contains("Force diff output to stdout"));
+    assert!(help.contains("Copy the diff to the clipboard without saving a diff file"));
+    assert!(help.contains("Copy the diff to the clipboard and save the diff file"));
     assert!(help.contains("Directory in which to write the diff file"));
     assert!(help.contains("-v, --verbose"));
     assert!(help.contains("-V, --version"));

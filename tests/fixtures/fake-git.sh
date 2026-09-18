@@ -1,6 +1,14 @@
 #!/bin/sh
 
 case "${0##*/}" in
+  wl-copy|xclip|xsel|pbcopy)
+    if [ -n "${GD_TEST_CLIPBOARD_FAIL:-}" ]; then
+      echo "provider display is unavailable" >&2
+      exit 17
+    fi
+    cat > "$GD_TEST_CLIPBOARD_OUTPUT"
+    exit 0
+    ;;
   hash-fails)
     if [ "$1" = rev-parse ]; then
       exit 1
@@ -44,6 +52,9 @@ case "${0##*/}" in
       exit 0
     fi
     exit 9
+    ;;
+  diff-fails)
+    exit 1
     ;;
   reference-non-utf8)
     printf '\377'
