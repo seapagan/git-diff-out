@@ -217,13 +217,21 @@ fn repository_name_from_remotes(
 }
 
 fn repository_root_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
-    let root = capture(git_program, cwd, ["rev-parse", "--show-toplevel"])?
-        .ok_or_else(|| "cannot determine the Git repository root".to_owned())?;
+    let output = Command::new(git_program)
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !output.status.success() {
+        return Err("cannot determine the Git repository root".to_owned());
+    }
+    let root = String::from_utf8_lossy(&output.stdout);
+    let root = root.trim();
     Path::new(&root)
         .file_name()
-        .and_then(OsStr::to_str)
+        .map(OsStr::to_string_lossy)
         .filter(|name| !name.is_empty())
-        .map(str::to_owned)
+        .map(|name| name.into_owned())
         .ok_or_else(|| "cannot determine the Git repository name".to_owned())
 }
 
@@ -238,7 +246,21 @@ fn remote_path(url: &str) -> Option<String> {
         }
         path.split(['?', '#']).next().unwrap_or(path)
     } else {
-        let colon = url.rfind(':')?;
+        let mut bracketed = false;
+        let colon = url
+            .char_indices()
+            .find_map(|(index, character)| match character {
+                '[' => {
+                    bracketed = true;
+                    None
+                }
+                ']' => {
+                    bracketed = false;
+                    None
+                }
+                ':' if !bracketed => Some(index),
+                _ => None,
+            })?;
         if url[..colon].contains('/') || url[..colon].contains('\\') {
             return None;
         }
@@ -315,6 +337,9 @@ mod tests {
         for (url, expected) in [
             ("x:group/project.git", "group/project"),
             ("a:repo.git", "repo"),
+            ("git@host:group/proj:x.git", "group/proj:x"),
+            ("host:a:b.git", "a:b"),
+            ("git@[2001:db8::1]:group/repo.git", "group/repo"),
             ("git@github.com:owner/repo.git", "owner/repo"),
             ("git@example.com:group/project.git", "group/project"),
             ("ssh://git@example.com/group/project.git", "group/project"),

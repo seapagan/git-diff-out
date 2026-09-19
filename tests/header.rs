@@ -2,6 +2,9 @@ mod common;
 
 use std::fs;
 
+#[cfg(unix)]
+use std::{ffi::OsString, os::unix::ffi::OsStringExt, process::Command};
+
 #[cfg(windows)]
 use clap::Parser;
 use common::{Repo, assert_success, patch};
@@ -366,6 +369,43 @@ fn repository_root_basename_is_used_without_a_usable_remote() {
     let expected = expected_header("Git diff of unstaged changes", repository, None, &diff);
 
     assert_stdout(&repo, &["--header"], &expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_repository_root_basename_is_rendered_lossily() {
+    let parent = tempfile::tempdir().unwrap();
+    let basename = OsString::from_vec(b"repository-\x80".to_vec());
+    let path = parent.path().join(&basename);
+    fs::create_dir(&path).unwrap();
+
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&path)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", common::null_device())
+            .output()
+            .unwrap();
+        assert_success(&output);
+        output
+    };
+    git(&["init", "-b", "main"]);
+    git(&["config", "user.name", "Test User"]);
+    git(&["config", "user.email", "test@example.invalid"]);
+    fs::write(path.join("tracked.txt"), "before\n").unwrap();
+    git(&["add", "tracked.txt"]);
+    git(&["commit", "-m", "initial"]);
+    fs::write(path.join("tracked.txt"), "after\n").unwrap();
+
+    let diff = git(&["diff", "--no-color"]).stdout;
+    let repository = basename.to_string_lossy();
+    let expected = expected_header("Git diff of unstaged changes", &repository, None, &diff);
+    let output = common::gd_command(&path, &["--header"]).output().unwrap();
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
