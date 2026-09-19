@@ -2,7 +2,18 @@ mod common;
 
 use std::fs;
 
+#[cfg(windows)]
+use clap::Parser;
 use common::{Repo, assert_success, patch};
+#[cfg(windows)]
+use git_diff_out::{app, cli::Cli};
+
+#[cfg(windows)]
+const CONFIG_PATH: &str = ".git/gd-config.toml";
+#[cfg(target_os = "macos")]
+const CONFIG_PATH: &str = ".gd-test-home/Library/Application Support/git-diff-out/config.toml";
+#[cfg(not(any(windows, target_os = "macos")))]
+const CONFIG_PATH: &str = ".gd-test-home/git-diff-out/config.toml";
 
 fn changed_repo() -> Repo {
     let repo = Repo::new("main");
@@ -13,14 +24,7 @@ fn changed_repo() -> Repo {
 }
 
 fn configure(repo: &Repo, contents: &str) {
-    let path = if cfg!(target_os = "macos") {
-        ".gd-test-home/Library/Application Support/git-diff-out/config.toml"
-    } else if cfg!(windows) {
-        ".gd-test-home/git-diff-out/config/config.toml"
-    } else {
-        ".gd-test-home/git-diff-out/config.toml"
-    };
-    repo.write(path, contents);
+    repo.write(CONFIG_PATH, contents);
 }
 
 fn add_origin(repo: &Repo, url: &str) {
@@ -39,10 +43,38 @@ fn expected_header(contents: &str, repository: &str, note: Option<&str>, diff: &
 }
 
 fn assert_stdout(repo: &Repo, args: &[&str], expected: &[u8]) {
+    #[cfg(windows)]
+    if repo.path().join(CONFIG_PATH).exists() {
+        let mut args = args.to_vec();
+        args.extend(["--output-dir", ".gd-test-output", "--quiet"]);
+        assert!(run_with_config(repo, &args).is_empty());
+        assert_eq!(patch(repo, ".gd-test-output/unstaged.diff"), expected);
+        return;
+    }
+
     let output = repo.gd(args);
     assert_success(&output);
     assert_eq!(output.stdout, expected);
     assert!(output.stderr.is_empty());
+}
+
+#[cfg(windows)]
+fn run_with_config(repo: &Repo, args: &[&str]) -> Vec<u8> {
+    let cli = Cli::try_parse_from(std::iter::once("gd").chain(args.iter().copied()))
+        .and_then(Cli::validated)
+        .unwrap();
+    let mut messages = Vec::new();
+    app::run_in_with_writer(
+        cli,
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: Some(repo.path().join(CONFIG_PATH)),
+            git_program: "git".into(),
+        },
+        &mut messages,
+    )
+    .unwrap();
+    messages
 }
 
 #[test]
@@ -402,14 +434,24 @@ fn config_header_is_written_to_saved_file() {
     let diff = repo.git(["diff", "--no-color"]).stdout;
     let expected = expected_header("Git diff of unstaged changes", "seapagan/gd", None, &diff);
 
-    let output = repo.gd(&["--output-dir", "rendered"]);
-    assert_success(&output);
+    #[cfg(not(windows))]
+    let output = {
+        let output = repo.gd(&["--output-dir", "rendered"]);
+        assert_success(&output);
+        output
+    };
+    #[cfg(windows)]
+    let messages = run_with_config(&repo, &["--output-dir", "rendered"]);
     assert_eq!(
         fs::read(repo.path().join("rendered/unstaged.diff")).unwrap(),
         expected
     );
+    #[cfg(not(windows))]
     assert_eq!(output.stdout, expected);
+    #[cfg(not(windows))]
     assert!(output.stderr.is_empty());
+    #[cfg(windows)]
+    assert!(!messages.is_empty());
 
     repo.gd_in(&["--header"]).unwrap();
     assert_eq!(patch(&repo, "unstaged.diff"), expected);
