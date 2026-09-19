@@ -210,7 +210,7 @@ pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String
 }
 
 fn remote_path(url: &str) -> Option<String> {
-    if matches!(url.as_bytes(), [drive, b':', ..] if drive.is_ascii_alphabetic()) {
+    if matches!(url.as_bytes(), [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic()) {
         return None;
     }
     let path = if let Some((_, address)) = url.split_once("://") {
@@ -263,6 +263,8 @@ mod tests {
         for path in [
             r"C:\path\to\repo",
             "C:/path/to/repo",
+            r"d:\work\repo.git",
+            "d:/work/repo.git",
             r"\\server\share\repo",
             "//server/share/repo",
         ] {
@@ -273,6 +275,8 @@ mod tests {
     #[test]
     fn git_remote_paths_remain_supported() {
         for (url, expected) in [
+            ("x:group/project.git", "group/project"),
+            ("a:repo.git", "repo"),
             ("git@github.com:owner/repo.git", "owner/repo"),
             ("git@example.com:group/project.git", "group/project"),
             ("ssh://git@example.com/group/project.git", "group/project"),
