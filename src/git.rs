@@ -240,32 +240,44 @@ fn remote_path(url: &str) -> Option<String> {
         return None;
     }
     let path = if let Some((_, address)) = url.split_once("://") {
-        let (host, path) = address.split_once('/')?;
-        if host.is_empty() {
-            return None;
-        }
-        path.split(['?', '#']).next().unwrap_or(path)
+        url_remote_path(address)?
     } else {
-        let mut bracketed = false;
-        let colon = url
-            .char_indices()
-            .find_map(|(index, character)| match character {
-                '[' => {
-                    bracketed = true;
-                    None
-                }
-                ']' => {
-                    bracketed = false;
-                    None
-                }
-                ':' if !bracketed => Some(index),
-                _ => None,
-            })?;
-        if url[..colon].contains('/') || url[..colon].contains('\\') {
-            return None;
-        }
-        &url[colon + 1..]
+        scp_remote_path(url)?
     };
+    cleanup_remote_path(path)
+}
+
+fn url_remote_path(address: &str) -> Option<&str> {
+    let (host, path) = address.split_once('/')?;
+    (!host.is_empty()).then(|| path.split(['?', '#']).next().unwrap_or(path))
+}
+
+fn scp_remote_path(url: &str) -> Option<&str> {
+    let colon = scp_separator(url)?;
+    if url[..colon].contains('/') || url[..colon].contains('\\') {
+        return None;
+    }
+    Some(&url[colon + 1..])
+}
+
+fn scp_separator(url: &str) -> Option<usize> {
+    let mut bracketed = false;
+    url.char_indices()
+        .find_map(|(index, character)| match character {
+            '[' => {
+                bracketed = true;
+                None
+            }
+            ']' => {
+                bracketed = false;
+                None
+            }
+            ':' if !bracketed => Some(index),
+            _ => None,
+        })
+}
+
+fn cleanup_remote_path(path: &str) -> Option<String> {
     let path = path.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     (!path.is_empty()).then(|| path.to_owned())
