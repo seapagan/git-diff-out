@@ -16,6 +16,8 @@ fn missing_config_uses_defaults() {
     assert!(!config.quiet);
     assert_eq!(config.base_branch, None);
     assert!(!config.clipboard.osc52_fallback);
+    assert!(!config.header.enabled);
+    assert_eq!(config.header.note, None);
 }
 
 #[test]
@@ -25,6 +27,24 @@ fn loads_local_osc52_fallback_setting() {
     fs::write(&path, "[clipboard]\nosc52_fallback = true\n").unwrap();
 
     assert!(Config::load(&path).unwrap().clipboard.osc52_fallback);
+}
+
+#[test]
+fn loads_optional_header_settings() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("config.toml");
+    fs::write(
+        &path,
+        "[header]\nenabled = true\nnote = 'Review error handling carefully'\n",
+    )
+    .unwrap();
+
+    let config = Config::load(&path).unwrap();
+    assert!(config.header.enabled);
+    assert_eq!(
+        config.header.note.as_deref(),
+        Some("Review error handling carefully")
+    );
 }
 
 #[test]

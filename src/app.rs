@@ -13,7 +13,7 @@ use crate::{
     cli::{Cli, Mode},
     clipboard,
     config::{Config, EffectiveConfig},
-    git::{detect_base, resolved_diff_args},
+    git::{detect_base, repository_name, resolved_diff_args},
 };
 
 type CopyResult = Result<(), Box<dyn Error>>;
@@ -171,15 +171,17 @@ fn run_with_outputs(
     copy: &mut ClipboardWriter<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let mode = cli.mode()?;
-    if let Some(result) = stdout_without_config(&mode, &environment, plan) {
-        return result;
+    if cli.no_header {
+        if let Some(result) = stdout_without_config(&mode, &environment, plan) {
+            return result;
+        }
     }
 
     let config = load_config(environment.config_path.as_deref())?;
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
     let base = resolve_base(&mode, config.base_branch, &environment)?;
 
-    if plan == OutputPlan::new(true, false, false) {
+    if !effective.header && plan == OutputPlan::new(true, false, false) {
         return run_to_stdout(
             &mode,
             base.as_deref(),
@@ -187,7 +189,7 @@ fn run_with_outputs(
             &environment.git_program,
         );
     }
-    if plan == OutputPlan::new(false, true, false) {
+    if !effective.header && plan == OutputPlan::new(false, true, false) {
         return run_to_file(
             &mode,
             base.as_deref(),
@@ -265,12 +267,22 @@ fn run_to_multiple_outputs(
     base: Option<&str>,
     mut outputs: MultipleOutputs<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let payload = render_diff(
+    let mut payload = render_diff(
         mode,
         base,
         &outputs.environment.cwd,
         &outputs.environment.git_program,
     )?;
+    if outputs.effective.header && !payload.is_empty() {
+        payload = annotate_diff(
+            mode,
+            base,
+            outputs.effective.note.as_deref(),
+            &outputs.environment.cwd,
+            &outputs.environment.git_program,
+            payload,
+        )?;
+    }
     let mut errors = Vec::new();
     outputs.write_file(mode, &payload, &mut errors);
     outputs.write_stdout(&payload, &mut errors);
@@ -280,6 +292,44 @@ fn run_to_multiple_outputs(
     } else {
         Err(errors.join("; ").into())
     }
+}
+
+fn annotate_diff(
+    mode: &Mode,
+    base: Option<&str>,
+    note: Option<&str>,
+    cwd: &Path,
+    git_program: &OsString,
+    diff: Vec<u8>,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let repository = repository_name(cwd, git_program)?
+        .replace('\r', "\\r")
+        .replace('\n', "\\n");
+    let mut payload = format!(
+        "# contents: {}\n# repository: {repository}\n",
+        mode.contents(base)
+    )
+    .into_bytes();
+    if let Some(note) = note {
+        if note.contains('\n') || note.contains('\r') {
+            payload.extend_from_slice(b"# note:\n");
+            let note = note.replace("\r\n", "\n").replace('\r', "\n");
+            for line in note.split('\n') {
+                if line.chars().all(char::is_whitespace) {
+                    payload.extend_from_slice(b"#\n");
+                } else {
+                    payload.extend_from_slice(b"#   ");
+                    payload.extend_from_slice(line.as_bytes());
+                    payload.push(b'\n');
+                }
+            }
+        } else {
+            payload.extend_from_slice(format!("# note: {note}\n").as_bytes());
+        }
+    }
+    payload.push(b'\n');
+    payload.extend_from_slice(&diff);
+    Ok(payload)
 }
 
 fn render_diff(
