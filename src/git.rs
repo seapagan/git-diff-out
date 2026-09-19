@@ -236,7 +236,7 @@ fn remote_path(url: &str) -> Option<String> {
         if host.is_empty() {
             return None;
         }
-        path
+        path.split(['?', '#']).next().unwrap_or(path)
     } else {
         let colon = url.rfind(':')?;
         if url[..colon].contains('/') || url[..colon].contains('\\') {
@@ -244,7 +244,6 @@ fn remote_path(url: &str) -> Option<String> {
         }
         &url[colon + 1..]
     };
-    let path = path.split(['?', '#']).next().unwrap_or(path);
     let path = path.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     (!path.is_empty()).then(|| path.to_owned())
@@ -300,6 +299,16 @@ mod tests {
             ("git@example.com:group/project.git", "group/project"),
             ("ssh://git@example.com/group/project.git", "group/project"),
             ("https://example.com/group/project.git", "group/project"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
+
+    #[test]
+    fn scp_remote_paths_preserve_url_delimiter_characters() {
+        for (url, expected) in [
+            ("git@example.com:path/to/repo?name.git", "path/to/repo?name"),
+            ("git@example.com:path/to/repo#name.git", "path/to/repo#name"),
         ] {
             assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
         }
