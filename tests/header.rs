@@ -449,6 +449,14 @@ fn multiline_note_line_endings_are_rendered_as_a_comment_block() {
             "Review error handling carefully\n\nCheck cleanup paths",
             "# note:\n#   Review error handling carefully\n#\n#   Check cleanup paths\n",
         ),
+        (
+            "Review error handling carefully\n   \nCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#\n#   Check cleanup paths\n",
+        ),
+        (
+            "Review error handling carefully\n\t\t\nCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#\n#   Check cleanup paths\n",
+        ),
     ] {
         let output = repo.gd(&["--note", note]);
         assert_success(&output);

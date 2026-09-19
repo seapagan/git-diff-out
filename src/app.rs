@@ -315,7 +315,7 @@ fn annotate_diff(
             payload.extend_from_slice(b"# note:\n");
             let note = note.replace("\r\n", "\n").replace('\r', "\n");
             for line in note.split('\n') {
-                if line.is_empty() {
+                if line.chars().all(char::is_whitespace) {
                     payload.extend_from_slice(b"#\n");
                 } else {
                     payload.extend_from_slice(b"#   ");

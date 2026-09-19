@@ -138,18 +138,23 @@ fn parses_clipboard_flags() {
 
 #[test]
 fn parses_header_flags_and_note() {
-    for args in [
-        &["gd", "-H"][..],
-        &["gd", "--header"][..],
-        &["gd", "-N"][..],
-        &["gd", "--no-header"][..],
-        &["gd", "--note", "Check error paths"][..],
-    ] {
-        assert!(
-            Cli::try_parse_from(args).is_ok(),
-            "failed to parse {args:?}"
-        );
+    for flag in ["-H", "--header"] {
+        let cli = parse(&["gd", flag]);
+        assert!(cli.header);
+        assert!(!cli.no_header);
+        assert_eq!(cli.note, None);
     }
+    for flag in ["-N", "--no-header"] {
+        let cli = parse(&["gd", flag]);
+        assert!(!cli.header);
+        assert!(cli.no_header);
+        assert_eq!(cli.note, None);
+    }
+
+    let cli = parse(&["gd", "--note", "Check error paths"]);
+    assert!(!cli.header);
+    assert!(!cli.no_header);
+    assert_eq!(cli.note.as_deref(), Some("Check error paths"));
 }
 
 #[test]

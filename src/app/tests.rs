@@ -235,10 +235,14 @@ fn annotated_payload_is_identical_for_every_destination() {
     let saved = fs::read(repo.path().join("unstaged.diff")).unwrap();
     assert_eq!(stdout, copied);
     assert_eq!(stdout, saved);
-    assert!(stdout.starts_with(
-        b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Review carefully\n\n"
-    ));
-    assert_eq!(stdout.iter().filter(|byte| **byte == b'#').count(), 3);
+    let annotation = b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Review carefully\n\n";
+    let diff = Command::new("git")
+        .args(["diff", "--no-color"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap()
+        .stdout;
+    assert_eq!(stdout.strip_prefix(annotation), Some(diff.as_slice()));
 }
 
 #[test]

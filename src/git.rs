@@ -207,8 +207,8 @@ fn repository_name_from_remotes(
         if !seen.insert(remote.clone()) {
             continue;
         }
-        if let Some(path) = capture(git_program, cwd, ["remote", "get-url", &remote])?
-            .and_then(|url| remote_path(&url))
+        if let Some(path) =
+            capture_remote_url(git_program, cwd, &remote)?.and_then(|url| remote_path(&url))
         {
             return Ok(Some(path));
         }
@@ -260,6 +260,26 @@ fn capture<const N: usize>(
         .output()
         .map_err(|error| format!("failed to start git: {error}"))?;
     successful_stdout(output)
+}
+
+fn capture_remote_url(
+    git_program: &OsStr,
+    cwd: &Path,
+    remote: &str,
+) -> Result<Option<String>, String> {
+    let output = Command::new(git_program)
+        .args(["remote", "get-url", remote])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let Ok(value) = String::from_utf8(output.stdout) else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    Ok((!value.is_empty()).then(|| value.to_owned()))
 }
 
 fn successful_stdout(output: Output) -> Result<Option<String>, String> {
