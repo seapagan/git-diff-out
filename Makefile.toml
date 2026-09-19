@@ -7,7 +7,10 @@
 #   shellcheck from the host platform package manager or official release archive
 #   git from the host platform
 # Lizard is pinned to the version used by Codacy:
-#   uv tool install lizard==1.23.0
+#   uv tool install 'lizard==1.23.0'
+# Python support-code quality tools:
+#   uv tool install ruff
+#   uv tool install mypy
 #
 # cargo-msrv is needed only when discovering or updating the MSRV:
 #   cargo install cargo-msrv --locked
@@ -97,198 +100,25 @@ args = [
   "clippy::large_types_passed_by_value",
 ]
 
+[tasks.python-format]
+description = "Check Python support-code formatting"
+command = "ruff"
+args = ["format", "--check", "scripts/check_complexity.py"]
+
+[tasks.python-lint]
+description = "Lint Python support code"
+command = "ruff"
+args = ["check", "scripts/check_complexity.py"]
+
+[tasks.python-type]
+description = "Type-check Python support code strictly"
+command = "mypy"
+args = ["--strict", "scripts/check_complexity.py"]
+
 [tasks.complexity]
 description = "Report Codacy-aligned Rust complexity findings without failing verification"
-script_runner = "python"
-script_extension = "py"
-script = '''
-import csv
-import io
-import os
-from pathlib import Path
-import re
-import subprocess
-import sys
-import xml.etree.ElementTree as ET
-
-
-class CheckerError(Exception):
-    pass
-
-
-def limit(name):
-    value = os.environ.get(name, "")
-    if not re.fullmatch(r"[1-9][0-9]*", value):
-        raise CheckerError(f"{name} must be a positive integer, got {value!r}")
-    return int(value)
-
-
-def run(command):
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-    except FileNotFoundError as error:
-        raise CheckerError(f"required executable not found: {command[0]}") from error
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
-        raise CheckerError(f"{' '.join(command[:2])} failed with exit code {result.returncode}: {detail}")
-    return result.stdout
-
-
-def normalized(path):
-    return Path(path.removeprefix("./")).as_posix()
-
-
-def integer(row, field):
-    try:
-        value = int(row[field])
-    except (KeyError, TypeError, ValueError) as error:
-        raise CheckerError(f"invalid CSV {field} value: {row.get(field)!r}") from error
-    if value < 0:
-        raise CheckerError(f"invalid CSV {field} value: {value}")
-    return value
-
-
-def rust_files():
-    output = run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.rs"])
-    files = sorted(normalized(path) for path in output.split("\0") if path)
-    if not files:
-        raise CheckerError("no non-ignored Rust source files found")
-    return files
-
-
-def function_metrics(output, files):
-    reader = csv.DictReader(io.StringIO(output))
-    required = {"NLOC", "CCN", "PARAM", "file", "function", "start"}
-    if reader.fieldnames is None or not required.issubset(reader.fieldnames):
-        raise CheckerError(f"unexpected CSV columns: {reader.fieldnames!r}")
-
-    rows = []
-    for row in reader:
-        path = normalized(row["file"])
-        if path not in files or not row["function"]:
-            raise CheckerError(f"unexpected CSV function record: {row!r}")
-        start = integer(row, "start")
-        if start == 0:
-            raise CheckerError(f"invalid CSV start value: {start}")
-        rows.append(
-            {
-                "file": path,
-                "function": row["function"],
-                "line": start,
-                "nloc": integer(row, "NLOC"),
-                "ccn": integer(row, "CCN"),
-                "parameters": integer(row, "PARAM"),
-            }
-        )
-    return rows
-
-
-def file_metrics(output, expected_files):
-    try:
-        root = ET.fromstring(output)
-    except ET.ParseError as error:
-        raise CheckerError(f"invalid Lizard XML: {error}") from error
-
-    measures = root.findall(".//measure[@type='File']")
-    if len(measures) != 1:
-        raise CheckerError(f"expected one XML File measure, found {len(measures)}")
-    measure = measures[0]
-    labels = [label.text for label in measure.findall("./labels/label")]
-    if "NCSS" not in labels:
-        raise CheckerError(f"XML File measure lacks NCSS: {labels!r}")
-    nloc_index = labels.index("NCSS")
-
-    metrics = {}
-    for item in measure.findall("./item"):
-        path = normalized(item.get("name", ""))
-        values = [value.text for value in item.findall("./value")]
-        if not path or len(values) != len(labels) or path in metrics:
-            raise CheckerError(f"unexpected XML file record for {path!r}")
-        try:
-            nloc = int(values[nloc_index])
-        except (TypeError, ValueError) as error:
-            raise CheckerError(f"invalid XML NCSS value for {path!r}: {values[nloc_index]!r}") from error
-        if nloc < 0:
-            raise CheckerError(f"invalid XML NCSS value for {path!r}: {nloc}")
-        metrics[path] = nloc
-
-    actual_files = set(metrics)
-    expected_files = set(expected_files)
-    if actual_files != expected_files:
-        missing = sorted(expected_files - actual_files)
-        unexpected = sorted(actual_files - expected_files)
-        raise CheckerError(f"Rust analysis file mismatch; missing={missing!r}, unexpected={unexpected!r}")
-    return metrics
-
-
-def collect_findings(functions, file_nloc, thresholds):
-    findings = []
-    for function in functions:
-        for metric, value in (
-            ("CCN", function["ccn"]),
-            ("function NLOC", function["nloc"]),
-            ("parameters", function["parameters"]),
-        ):
-            configured = thresholds[metric]
-            if value > configured:
-                message = (
-                    f"{function['file']}:{function['line']}: function {function['function']!r}: "
-                    f"{metric} actual={value} limit={configured}"
-                )
-                findings.append((function["file"], function["line"], metric, message))
-    for path, value in file_nloc.items():
-        configured = thresholds["file NLOC"]
-        if value > configured:
-            message = f"{path}: file NLOC actual={value} limit={configured}"
-            findings.append((path, 0, "file NLOC", message))
-    return sorted(findings)
-
-
-def report(version, thresholds, findings):
-    print(f"Lizard version: {version}")
-    print(
-        "Effective thresholds: "
-        f"CCN <= {thresholds['CCN']}; "
-        f"function NLOC <= {thresholds['function NLOC']}; "
-        f"parameters <= {thresholds['parameters']}; "
-        f"file NLOC <= {thresholds['file NLOC']}"
-    )
-    for _, _, _, message in findings:
-        print(message)
-    if findings:
-        print(f"Complexity: {len(findings)} advisory finding(s); findings do not fail verification.")
-    else:
-        print("Complexity: no advisory findings.")
-
-
-def main():
-    expected_version = os.environ.get("COMPLEXITY_LIZARD_VERSION", "")
-    if not expected_version:
-        raise CheckerError("COMPLEXITY_LIZARD_VERSION must not be empty")
-    thresholds = {
-        "CCN": limit("COMPLEXITY_MAX_CCN"),
-        "function NLOC": limit("COMPLEXITY_MAX_FUNCTION_NLOC"),
-        "parameters": limit("COMPLEXITY_MAX_PARAMETERS"),
-        "file NLOC": limit("COMPLEXITY_MAX_FILE_NLOC"),
-    }
-
-    actual_version = run(["lizard", "--version"]).strip()
-    if actual_version != expected_version:
-        raise CheckerError(f"Lizard version mismatch: expected {expected_version}, got {actual_version!r}")
-
-    files = rust_files()
-    common = ["lizard", "-l", "rust", "-i", "-1", *files]
-    functions = function_metrics(run(common[:3] + ["-V", "--csv"] + common[3:]), set(files))
-    file_nloc = file_metrics(run(common[:3] + ["--xml"] + common[3:]), files)
-    report(actual_version, thresholds, collect_findings(functions, file_nloc, thresholds))
-
-
-try:
-    main()
-except CheckerError as error:
-    print(f"error: complexity checker: {error}", file=sys.stderr)
-    sys.exit(1)
-'''
+command = "python"
+args = ["scripts/check_complexity.py"]
 
 [tasks.doc]
 description = "Build Rust documentation with warnings denied"
@@ -548,6 +378,9 @@ dependencies = [
   "format",
   "whitespace",
   "quality",
+  "python-format",
+  "python-lint",
+  "python-type",
   "complexity",
   "doc",
   "msrv",
