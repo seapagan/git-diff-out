@@ -87,7 +87,11 @@ impl EffectiveConfig {
         } else {
             cli.header || cli.note.is_some() || config.header.enabled
         };
-        let note = cli.note.clone().or_else(|| config.header.note.clone());
+        let note = cli
+            .note
+            .clone()
+            .or_else(|| config.header.note.clone())
+            .filter(|note| note.chars().any(|character| !character.is_whitespace()));
         Self {
             output_dir,
             quiet,

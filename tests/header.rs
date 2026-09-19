@@ -87,6 +87,48 @@ fn cli_note_enables_header_and_overrides_configured_note() {
 }
 
 #[test]
+fn blank_cli_notes_enable_header_without_a_note_field() {
+    let repo = changed_repo();
+    add_origin(&repo, "https://github.com/seapagan/gd.git");
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", "seapagan/gd", None, &diff);
+
+    for note in ["", "   ", "\t", "\n\r\n"] {
+        assert_stdout(&repo, &["--note", note], &expected);
+    }
+}
+
+#[test]
+fn blank_configured_notes_are_omitted_from_enabled_headers() {
+    let repo = changed_repo();
+    add_origin(&repo, "https://github.com/seapagan/gd.git");
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", "seapagan/gd", None, &diff);
+
+    for config in [
+        "[header]\nenabled = true\nnote = ''\n",
+        "[header]\nenabled = true\nnote = \" \\t\\n\\n\"\n",
+    ] {
+        configure(&repo, config);
+        assert_stdout(&repo, &[], &expected);
+    }
+}
+
+#[test]
+fn empty_cli_note_suppresses_configured_note_and_enables_header() {
+    let repo = changed_repo();
+    add_origin(&repo, "https://github.com/seapagan/gd.git");
+    configure(
+        &repo,
+        "[header]\nenabled = false\nnote = 'Configured note'\n",
+    );
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", "seapagan/gd", None, &diff);
+
+    assert_stdout(&repo, &["--note", ""], &expected);
+}
+
+#[test]
 fn configured_note_appears_only_with_enabled_header() {
     let repo = changed_repo();
     add_origin(&repo, "https://github.com/seapagan/gd.git");

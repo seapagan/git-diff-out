@@ -157,6 +157,7 @@ fn rejects_conflicting_header_flags() {
     for args in [
         &["gd", "--header", "--no-header"][..],
         &["gd", "--no-header", "--note", "Check error paths"][..],
+        &["gd", "--no-header", "--note", ""][..],
     ] {
         let error = Cli::try_parse_from(args).unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
