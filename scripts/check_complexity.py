@@ -63,7 +63,12 @@ def _limit(name: str) -> int:
 
 def _run(command: Sequence[str]) -> str:
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(  # noqa: S603 - fixed executable and argv, no shell.
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
     except FileNotFoundError as error:
         message = f"required executable not found: {command[0]}"
         raise CheckerError(message) from error
@@ -157,7 +162,7 @@ def _function_metrics(output: str, files: set[str]) -> list[FunctionMetric]:
 
 def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
     try:
-        root = ET.fromstring(output)
+        root = ET.fromstring(output)  # noqa: S314 - trusted local Lizard output.
     except ET.ParseError as error:
         message = f"invalid Lizard XML: {error}"
         raise CheckerError(message) from error

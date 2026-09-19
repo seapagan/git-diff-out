@@ -7,8 +7,6 @@ ignore = ["COM812"]
 "scripts/check_complexity.py" = [
   "CPY001", # This repository does not add per-file copyright notices.
   "INP001", # The scripts directory contains executables, not a Python package.
-  "S314",   # XML comes from the local pinned Lizard process; stdlib-only is required.
-  "S603",   # Every subprocess argument vector is constructed internally without a shell.
   "T201",   # Printing the report and fatal diagnostics is this CLI's interface.
 ]
 

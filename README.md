@@ -90,6 +90,32 @@ target/release/git-diff-out
 
 Windows adds the `.exe` suffix to both paths.
 
+## Development checks
+
+Python is not required for ordinary Rust development on `gd`. The Ruff and
+mypy support-code checks and the local complexity checker are optional.
+`cargo make verify` keeps these tasks in its normal verification flow, but
+skips a Python-specific task when its required executables are unavailable.
+If installed tooling runs and reports an error, verification fails.
+
+For local parity with Codacy's complexity analysis, install Python 3 and the
+same Lizard version used by Codacy. Ruff and mypy provide additional optional
+formatting, linting, and strict type checking for the support script. Lizard is
+pinned for analyzer parity; Ruff and mypy are not currently pinned.
+
+For example, `uv tool` can install the optional tools in isolation:
+
+```bash
+uv tool install 'lizard==1.23.0'
+uv tool install ruff
+uv tool install mypy
+```
+
+`uv` is only one convenient installation method and is not required by the
+project. When Python and Lizard are available, `cargo make complexity` treats
+checker, parser, configuration, and tool-version errors as failures. Complexity
+threshold findings remain advisory and do not fail verification.
+
 ## Usage
 
 | Command                | Meaning                                              | Output                           |
