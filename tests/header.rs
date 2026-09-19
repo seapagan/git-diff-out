@@ -262,18 +262,87 @@ fn repository_root_basename_is_used_without_a_usable_remote() {
 }
 
 #[test]
-fn formatting_has_exactly_one_blank_line_before_diff() {
+fn single_line_note_format_is_unchanged() {
     let repo = changed_repo();
     add_origin(&repo, "git@github.com:seapagan/gd.git");
     let output = repo.gd(&["--note", "Check error paths"]);
     assert_success(&output);
-    let rendered = String::from_utf8(output.stdout).unwrap();
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let mut expected = b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Check error paths\n\n".to_vec();
+    expected.extend_from_slice(&diff);
 
-    assert!(rendered.starts_with(
-        "# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Check error paths\n\ndiff --git "
-    ));
-    assert!(!rendered.contains("Check error paths\n\n\n"));
+    assert_eq!(output.stdout, expected);
     assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn multiline_note_line_endings_are_rendered_as_a_comment_block() {
+    let repo = changed_repo();
+    add_origin(&repo, "git@github.com:seapagan/gd.git");
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+
+    for (note, rendered_note) in [
+        (
+            "Review error handling carefully\nCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#   Check cleanup paths\n",
+        ),
+        (
+            "Review error handling carefully\r\nCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#   Check cleanup paths\n",
+        ),
+        (
+            "Review error handling carefully\rCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#   Check cleanup paths\n",
+        ),
+        (
+            "Review error handling carefully\n\nCheck cleanup paths",
+            "# note:\n#   Review error handling carefully\n#\n#   Check cleanup paths\n",
+        ),
+    ] {
+        let output = repo.gd(&["--note", note]);
+        assert_success(&output);
+        let mut expected = format!(
+            "# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n{rendered_note}\n"
+        )
+        .into_bytes();
+        expected.extend_from_slice(&diff);
+
+        assert_eq!(output.stdout, expected, "note: {note:?}");
+    }
+}
+
+#[test]
+fn configured_multiline_note_is_rendered_as_a_comment_block() {
+    let repo = changed_repo();
+    add_origin(&repo, "git@github.com:seapagan/gd.git");
+    configure(
+        &repo,
+        "[header]\nenabled = true\nnote = \"Review errors\\nCheck cleanup\"\n",
+    );
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let mut expected = b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note:\n#   Review errors\n#   Check cleanup\n\n".to_vec();
+    expected.extend_from_slice(&diff);
+
+    assert_stdout(&repo, &[], &expected);
+}
+
+#[test]
+fn cli_multiline_note_overrides_configured_note() {
+    let repo = changed_repo();
+    add_origin(&repo, "git@github.com:seapagan/gd.git");
+    configure(
+        &repo,
+        "[header]\nenabled = true\nnote = 'Configured note'\n",
+    );
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let mut expected = b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note:\n#   CLI first line\n#   CLI second line\n\n".to_vec();
+    expected.extend_from_slice(&diff);
+
+    assert_stdout(
+        &repo,
+        &["--note", "CLI first line\nCLI second line"],
+        &expected,
+    );
 }
 
 #[test]

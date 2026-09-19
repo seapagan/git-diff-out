@@ -199,6 +199,88 @@ fn empty_copy_does_not_touch_the_clipboard_and_reports_status() {
 }
 
 #[test]
+fn empty_header_stdout_remains_silent() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    let mut stdout = Vec::new();
+    let mut messages = Vec::new();
+    let mut copied = false;
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "--header"]),
+        environment(repo.path()),
+        OutputPlan::new(true, false, false),
+        &mut stdout,
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(stdout.is_empty());
+    assert!(messages.is_empty());
+    assert!(!copied);
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn configured_header_empty_copy_skips_clipboard_and_reports_status() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    let config = repo.path().join(".git/gd-config.toml");
+    fs::write(&config, "[header]\nenabled = true\n").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config);
+    let mut copied = false;
+    let mut messages = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "-c"]),
+        environment,
+        OutputPlan::new(false, false, true),
+        &mut Vec::new(),
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(!copied);
+    assert_eq!(messages, b"No unstaged changes.\n");
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn empty_note_copy_save_skips_clipboard_and_removes_stale_file() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    fs::write(repo.path().join("unstaged.diff"), "stale\n").unwrap();
+    let mut copied = false;
+    let mut messages = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "-C", "--note", "Review carefully"]),
+        environment(repo.path()),
+        OutputPlan::new(false, true, true),
+        &mut Vec::new(),
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(!copied);
+    assert_eq!(messages, b"No unstaged changes.\n");
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
 fn empty_copy_save_does_not_touch_the_clipboard_and_removes_stale_file() {
     let repo = changed_repo();
     fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();

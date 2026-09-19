@@ -273,7 +273,7 @@ fn run_to_multiple_outputs(
         &outputs.environment.cwd,
         &outputs.environment.git_program,
     )?;
-    if outputs.effective.header {
+    if outputs.effective.header && !payload.is_empty() {
         payload = annotate_diff(
             mode,
             base,
@@ -309,7 +309,21 @@ fn annotate_diff(
     )
     .into_bytes();
     if let Some(note) = note {
-        payload.extend_from_slice(format!("# note: {note}\n").as_bytes());
+        if note.contains('\n') || note.contains('\r') {
+            payload.extend_from_slice(b"# note:\n");
+            let note = note.replace("\r\n", "\n").replace('\r', "\n");
+            for line in note.split('\n') {
+                if line.is_empty() {
+                    payload.extend_from_slice(b"#\n");
+                } else {
+                    payload.extend_from_slice(b"#   ");
+                    payload.extend_from_slice(line.as_bytes());
+                    payload.push(b'\n');
+                }
+            }
+        } else {
+            payload.extend_from_slice(format!("# note: {note}\n").as_bytes());
+        }
     }
     payload.push(b'\n');
     payload.extend_from_slice(&diff);
