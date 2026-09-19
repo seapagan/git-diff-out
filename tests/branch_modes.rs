@@ -7,6 +7,11 @@ use common::{Repo, assert_success, patch};
 use git_diff_out::{app, cli::Cli};
 use tempfile::tempdir;
 
+#[cfg(target_os = "macos")]
+const CONFIG_PATH: &str = ".gd-test-home/Library/Application Support/git-diff-out/config.toml";
+#[cfg(not(any(windows, target_os = "macos")))]
+const CONFIG_PATH: &str = ".gd-test-home/git-diff-out/config.toml";
+
 fn feature_repo(root: &str) -> Repo {
     let repo = Repo::new(root);
     repo.write("tracked.txt", "root\n");
@@ -59,6 +64,36 @@ fn explicit_base_supports_custom_root_branch() {
         assert_success(&output);
         assert_eq!(output.stdout, expected);
     }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn explicit_branch_no_header_stdout_ignores_invalid_config() {
+    let repo = feature_repo("main");
+    repo.write(CONFIG_PATH, "this is not toml");
+    let expected = repo.git(["diff", "--no-color", "main...HEAD"]).stdout;
+
+    let output = repo.gd(&["branch", "main", "--stdout", "--no-header"]);
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert!(!repo.path().join("branch.diff").exists());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn branch_no_header_stdout_matches_configured_base() {
+    let repo = feature_repo("develop");
+    repo.write(CONFIG_PATH, "base_branch = 'develop'\n");
+    let expected = repo.git(["diff", "--no-color", "develop...HEAD"]).stdout;
+
+    let output = repo.gd(&["branch", "--stdout", "--no-header"]);
+
+    assert_success(&output);
+    assert_eq!(output.stdout, expected);
+    assert!(output.stderr.is_empty());
+    assert!(!repo.path().join("branch.diff").exists());
 }
 
 #[test]
