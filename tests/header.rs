@@ -286,6 +286,27 @@ fn repository_path_supports_https_and_nested_namespaces() {
 }
 
 #[test]
+fn repository_line_breaks_are_visibly_escaped() {
+    for (url, repository) in [
+        (
+            "git@example.com:owner/repo\ninjected.git",
+            "owner/repo\\ninjected",
+        ),
+        (
+            "git@example.com:owner/repo\rinjected.git",
+            "owner/repo\\rinjected",
+        ),
+    ] {
+        let repo = changed_repo();
+        add_origin(&repo, url);
+        let diff = repo.git(["diff", "--no-color"]).stdout;
+        let expected = expected_header("Git diff of unstaged changes", repository, None, &diff);
+
+        assert_stdout(&repo, &["--header"], &expected);
+    }
+}
+
+#[test]
 fn current_branch_upstream_remote_precedes_origin() {
     let repo = changed_repo();
     add_origin(&repo, "https://example.com/fallback/origin.git");

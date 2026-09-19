@@ -302,7 +302,9 @@ fn annotate_diff(
     git_program: &OsString,
     diff: Vec<u8>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let repository = repository_name(cwd, git_program)?;
+    let repository = repository_name(cwd, git_program)?
+        .replace('\r', "\\r")
+        .replace('\n', "\\n");
     let mut payload = format!(
         "# contents: {}\n# repository: {repository}\n",
         mode.contents(base)

@@ -244,6 +244,7 @@ fn remote_path(url: &str) -> Option<String> {
         }
         &url[colon + 1..]
     };
+    let path = path.split(['?', '#']).next().unwrap_or(path);
     let path = path.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     (!path.is_empty()).then(|| path.to_owned())
@@ -299,6 +300,23 @@ mod tests {
             ("git@example.com:group/project.git", "group/project"),
             ("ssh://git@example.com/group/project.git", "group/project"),
             ("https://example.com/group/project.git", "group/project"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
+
+    #[test]
+    fn url_metadata_is_excluded_from_remote_repository_paths() {
+        for (url, expected) in [
+            (
+                "https://example.com/owner/repo.git?access_token=TOPSECRET",
+                "owner/repo",
+            ),
+            ("https://example.com/owner/repo.git#fragment", "owner/repo"),
+            (
+                "https://user:secret@example.com/owner/repo.git?token=abc#frag",
+                "owner/repo",
+            ),
         ] {
             assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
         }
