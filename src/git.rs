@@ -210,6 +210,9 @@ pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String
 }
 
 fn remote_path(url: &str) -> Option<String> {
+    if matches!(url.as_bytes(), [drive, b':', ..] if drive.is_ascii_alphabetic()) {
+        return None;
+    }
     let path = if let Some((_, address)) = url.split_once("://") {
         let (host, path) = address.split_once('/')?;
         if host.is_empty() {
@@ -249,4 +252,33 @@ fn successful_stdout(output: Output) -> Result<Option<String>, String> {
         .map_err(|_| "git returned non-UTF-8 reference data".to_owned())?;
     let value = value.trim();
     Ok((!value.is_empty()).then(|| value.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remote_path;
+
+    #[test]
+    fn windows_paths_are_not_remote_repository_paths() {
+        for path in [
+            r"C:\path\to\repo",
+            "C:/path/to/repo",
+            r"\\server\share\repo",
+            "//server/share/repo",
+        ] {
+            assert_eq!(remote_path(path), None, "path: {path}");
+        }
+    }
+
+    #[test]
+    fn git_remote_paths_remain_supported() {
+        for (url, expected) in [
+            ("git@github.com:owner/repo.git", "owner/repo"),
+            ("git@example.com:group/project.git", "group/project"),
+            ("ssh://git@example.com/group/project.git", "group/project"),
+            ("https://example.com/group/project.git", "group/project"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
 }

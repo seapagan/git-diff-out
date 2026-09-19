@@ -13,7 +13,14 @@ fn changed_repo() -> Repo {
 }
 
 fn configure(repo: &Repo, contents: &str) {
-    repo.write(".gd-test-home/git-diff-out/config.toml", contents);
+    let path = if cfg!(target_os = "macos") {
+        ".gd-test-home/Library/Application Support/git-diff-out/config.toml"
+    } else if cfg!(windows) {
+        ".gd-test-home/git-diff-out/config/config.toml"
+    } else {
+        ".gd-test-home/git-diff-out/config.toml"
+    };
+    repo.write(path, contents);
 }
 
 fn add_origin(repo: &Repo, url: &str) {
