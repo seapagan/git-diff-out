@@ -7,7 +7,7 @@
 #   shellcheck from the host platform package manager or official release archive
 #   git from the host platform
 # Optional Python support tooling; related tasks are skipped when unavailable.
-# Python 3 and Lizard provide local Codacy parity. Lizard is pinned to Codacy:
+# Python 3.10+ and Lizard provide local Codacy parity. Lizard is pinned to Codacy:
 #   uv tool install 'lizard==1.23.0'
 # Ruff and mypy are optional and currently unpinned:
 #   uv tool install ruff
@@ -122,7 +122,7 @@ args = ["--strict", "scripts/check_complexity.py"]
 
 [tasks.complexity]
 description = "Report Codacy-aligned Rust complexity findings without failing verification"
-condition_script = ["python --version && lizard --version"]
+condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))" && lizard --version']
 command = "python"
 args = ["scripts/check_complexity.py"]
 

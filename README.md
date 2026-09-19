@@ -95,13 +95,17 @@ Windows adds the `.exe` suffix to both paths.
 Python is not required for ordinary Rust development on `gd`. The Ruff and
 mypy support-code checks and the local complexity checker are optional.
 `cargo make verify` keeps these tasks in its normal verification flow, but
-skips a Python-specific task when its required executables are unavailable.
-If installed tooling runs and reports an error, verification fails.
+skips the complexity task when Python is unavailable, Python is older than
+3.10, or Lizard is unavailable. If installed tooling runs and reports an
+error, verification fails.
 
-For local parity with Codacy's complexity analysis, install Python 3 and the
-same Lizard version used by Codacy. Ruff and mypy provide additional optional
-formatting, linting, and strict type checking for the support script. Lizard is
-pinned for analyzer parity; Ruff and mypy are not currently pinned.
+For local parity with Codacy's complexity analysis, install Python 3.10+ and
+the same Lizard version used by Codacy. Python 3.10+ is required only for the
+optional local complexity checker. Direct use of
+`python scripts/check_complexity.py` requires Python 3.10+. Ruff and mypy
+provide additional optional formatting, linting, and strict type checking for
+the support script. Lizard is pinned for analyzer parity; Ruff and mypy are not
+currently pinned.
 
 For example, `uv tool` can install the optional tools in isolation:
 
@@ -112,9 +116,9 @@ uv tool install mypy
 ```
 
 `uv` is only one convenient installation method and is not required by the
-project. When Python and Lizard are available, `cargo make complexity` treats
-checker, parser, configuration, and tool-version errors as failures. Complexity
-threshold findings remain advisory and do not fail verification.
+project. When Python 3.10+ and Lizard are available, `cargo make complexity`
+treats checker, parser, configuration, and tool-version errors as failures.
+Complexity threshold findings remain advisory and do not fail verification.
 
 ## Usage
 

@@ -13,6 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+MINIMUM_PYTHON = (3, 10)
+
+if sys.version_info < MINIMUM_PYTHON:
+    print("check_complexity.py requires Python 3.10 or newer", file=sys.stderr)
+    raise SystemExit(1)
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
