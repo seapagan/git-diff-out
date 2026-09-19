@@ -19,7 +19,8 @@ fn after_help(name: &str) -> String {
   {name} -c              Copy the unstaged diff to the clipboard
   {name} -C              Copy and save the unstaged diff
 
-Piped or redirected stdout receives the raw diff automatically."#,
+Piped or redirected stdout receives the rendered diff automatically.
+Use --no-header when a downstream tool requires a raw Git diff."#,
         "Examples:".bold().underline()
     )
 }
@@ -56,6 +57,18 @@ pub struct Cli {
     #[arg(short = 'o', long, value_name = "PATH", conflicts_with = "stdout")]
     pub output_dir: Option<PathBuf>,
 
+    /// Include an annotation header in the rendered diff.
+    #[arg(short = 'H', long, conflicts_with = "no_header")]
+    pub header: bool,
+
+    /// Omit the annotation header, overriding configuration.
+    #[arg(short = 'N', long, conflicts_with_all = ["header", "note"])]
+    pub no_header: bool,
+
+    /// Include an annotation header with note text; conflicts with --no-header.
+    #[arg(long, value_name = "TEXT", conflicts_with = "no_header")]
+    pub note: Option<String>,
+
     /// Suppress successful file-output messages.
     #[arg(short, long, conflicts_with = "verbose")]
     quiet: bool,
@@ -84,6 +97,20 @@ impl Mode {
             Self::Branch(_) => "branch.diff".into(),
             Self::Commits(1) => "last-commit.diff".into(),
             Self::Commits(count) => format!("last-{count}-commits.diff"),
+        }
+    }
+
+    pub(crate) fn contents(&self, base: Option<&str>) -> String {
+        match self {
+            Self::Default | Self::Unstaged => "Git diff of unstaged changes".into(),
+            Self::Staged => "Git diff of staged changes".into(),
+            Self::All => "Git diff of all tracked changes".into(),
+            Self::Branch(_) => format!(
+                "Git diff of the current branch against {}",
+                base.expect("branch mode needs a base")
+            ),
+            Self::Commits(1) => "Git diff of the last commit".into(),
+            Self::Commits(count) => format!("Git diff of the last {count} commits"),
         }
     }
 }

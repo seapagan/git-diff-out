@@ -60,6 +60,56 @@ case "${0##*/}" in
     printf '\377'
     exit 0
     ;;
+  repository-invalid-utf8-then-valid)
+    if [ "$1" = remote ] && [ "$2" = get-url ]; then
+      case "$3" in
+        broken) printf '\377' ;;
+        backup) printf 'git@example.com:group/project.git\n' ;;
+        *) exit 1 ;;
+      esac
+      exit 0
+    fi
+    if [ "$1" = remote ]; then
+      printf 'broken\nbackup\n'
+      exit 0
+    fi
+    if [ "$1" = symbolic-ref ]; then
+      exit 1
+    fi
+    ;;
+  repository-invalid-utf8-fallback)
+    if [ "$1" = remote ] && [ "$2" = get-url ]; then
+      if [ "$3" = broken ]; then
+        printf '\377'
+        exit 0
+      fi
+      exit 1
+    fi
+    if [ "$1" = remote ]; then
+      printf 'broken\n'
+      exit 0
+    fi
+    if [ "$1" = symbolic-ref ]; then
+      exit 1
+    fi
+    if [ "$1" = rev-parse ]; then
+      printf '%s\n' "$PWD"
+      exit 0
+    fi
+    ;;
+  repository-get-url-startup-fails)
+    if [ "$1" = remote ] && [ "$2" = get-url ]; then
+      rm "$0"
+      exit 1
+    fi
+    if [ "$1" = remote ]; then
+      printf 'backup\n'
+      exit 0
+    fi
+    if [ "$1" = symbolic-ref ]; then
+      exit 1
+    fi
+    ;;
 esac
 
 exit 1

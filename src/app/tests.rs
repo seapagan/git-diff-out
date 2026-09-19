@@ -9,6 +9,10 @@ use crate::{
 };
 
 fn changed_repo() -> tempfile::TempDir {
+    changed_repo_on("main")
+}
+
+fn changed_repo_on(branch: &str) -> tempfile::TempDir {
     let repo = tempfile::tempdir().unwrap();
     let git = |args: &[&str]| {
         let status = Command::new("git")
@@ -23,13 +27,35 @@ fn changed_repo() -> tempfile::TempDir {
             .unwrap();
         assert!(status.success());
     };
-    git(&["init", "-b", "main"]);
+    git(&["init", "-b", branch]);
     git(&["config", "user.name", "Test User"]);
     git(&["config", "user.email", "test@example.invalid"]);
     fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
     git(&["add", "tracked.txt"]);
     git(&["commit", "-m", "initial"]);
     fs::write(repo.path().join("tracked.txt"), "after café 😀\n").unwrap();
+    repo
+}
+
+fn branch_repo(root: &str) -> tempfile::TempDir {
+    let repo = changed_repo_on(root);
+    for args in [
+        &["switch", "-c", "feature"][..],
+        &["add", "tracked.txt"][..],
+        &["commit", "-m", "feature"][..],
+    ] {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo.path())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
     repo
 }
 
@@ -88,6 +114,48 @@ fn configured_output_directory_does_not_suppress_automatic_stdout() {
 }
 
 #[test]
+fn explicit_branch_no_header_stdout_does_not_read_config() {
+    let repo = branch_repo("main");
+    let config_path = repo.path().join("invalid.toml");
+    fs::write(&config_path, "this is not toml").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config_path);
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "branch", "main", "--stdout", "--no-header"]),
+        environment,
+        OutputPlan::new(true, false, false),
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut |_payload, _fallback| Ok(()),
+    )
+    .unwrap();
+
+    assert!(!repo.path().join("branch.diff").exists());
+}
+
+#[test]
+fn branch_no_header_stdout_uses_configured_base() {
+    let repo = branch_repo("develop");
+    let config_path = repo.path().join("config.toml");
+    fs::write(&config_path, "base_branch = 'develop'\n").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config_path);
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "branch", "--stdout", "--no-header"]),
+        environment,
+        OutputPlan::new(true, false, false),
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut |_payload, _fallback| Ok(()),
+    )
+    .unwrap();
+
+    assert!(!repo.path().join("branch.diff").exists());
+}
+
+#[test]
 fn copy_destinations_receive_the_same_rendered_payload() {
     for (args, terminal, expect_stdout, expect_file) in [
         (&["gd", "-c"][..], true, false, false),
@@ -140,6 +208,44 @@ fn copy_destinations_receive_the_same_rendered_payload() {
 }
 
 #[test]
+fn annotated_payload_is_identical_for_every_destination() {
+    let repo = changed_repo();
+    let status = Command::new("git")
+        .args(["remote", "add", "origin", "git@github.com:seapagan/gd.git"])
+        .current_dir(repo.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut stdout = Vec::new();
+    let mut copied = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "--header", "--note", "Review carefully"]),
+        environment(repo.path()),
+        OutputPlan::new(true, true, true),
+        &mut stdout,
+        &mut Vec::new(),
+        &mut |payload, _fallback| {
+            copied.extend_from_slice(payload);
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    let saved = fs::read(repo.path().join("unstaged.diff")).unwrap();
+    assert_eq!(stdout, copied);
+    assert_eq!(stdout, saved);
+    let annotation = b"# contents: Git diff of unstaged changes\n# repository: seapagan/gd\n# note: Review carefully\n\n";
+    let diff = Command::new("git")
+        .args(["diff", "--no-color"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap()
+        .stdout;
+    assert_eq!(stdout.strip_prefix(annotation), Some(diff.as_slice()));
+}
+
+#[test]
 fn empty_copy_does_not_touch_the_clipboard_and_reports_status() {
     let repo = changed_repo();
     fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
@@ -150,6 +256,88 @@ fn empty_copy_does_not_touch_the_clipboard_and_reports_status() {
         Cli::parse_from(["gd", "-c"]),
         environment(repo.path()),
         OutputPlan::new(false, false, true),
+        &mut Vec::new(),
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(!copied);
+    assert_eq!(messages, b"No unstaged changes.\n");
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn empty_header_stdout_remains_silent() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    let mut stdout = Vec::new();
+    let mut messages = Vec::new();
+    let mut copied = false;
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "--header"]),
+        environment(repo.path()),
+        OutputPlan::new(true, false, false),
+        &mut stdout,
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(stdout.is_empty());
+    assert!(messages.is_empty());
+    assert!(!copied);
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn configured_header_empty_copy_skips_clipboard_and_reports_status() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    let config = repo.path().join(".git/gd-config.toml");
+    fs::write(&config, "[header]\nenabled = true\n").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config);
+    let mut copied = false;
+    let mut messages = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "-c"]),
+        environment,
+        OutputPlan::new(false, false, true),
+        &mut Vec::new(),
+        &mut messages,
+        &mut |_payload, _fallback| {
+            copied = true;
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(!copied);
+    assert_eq!(messages, b"No unstaged changes.\n");
+    assert!(!repo.path().join("unstaged.diff").exists());
+}
+
+#[test]
+fn empty_note_copy_save_skips_clipboard_and_removes_stale_file() {
+    let repo = changed_repo();
+    fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
+    fs::write(repo.path().join("unstaged.diff"), "stale\n").unwrap();
+    let mut copied = false;
+    let mut messages = Vec::new();
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "-C", "--note", "Review carefully"]),
+        environment(repo.path()),
+        OutputPlan::new(false, true, true),
         &mut Vec::new(),
         &mut messages,
         &mut |_payload, _fallback| {

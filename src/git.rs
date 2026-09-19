@@ -157,6 +157,132 @@ pub fn detect_base(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
     })
 }
 
+pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
+    let candidates = repository_remote_candidates(cwd, git_program)?;
+    if let Some(path) = repository_name_from_remotes(cwd, git_program, candidates)? {
+        return Ok(path);
+    }
+    repository_root_name(cwd, git_program)
+}
+
+fn repository_remote_candidates(cwd: &Path, git_program: &OsStr) -> Result<Vec<String>, String> {
+    let remotes = capture(git_program, cwd, ["remote"])?
+        .map(|value| value.lines().map(str::to_owned).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let current_branch = capture(
+        git_program,
+        cwd,
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )?;
+    let upstream = if let Some(branch) = current_branch {
+        capture(
+            git_program,
+            cwd,
+            [
+                "for-each-ref",
+                "--format=%(upstream:remotename)",
+                &format!("refs/heads/{branch}"),
+            ],
+        )?
+    } else {
+        None
+    };
+
+    let mut candidates = Vec::new();
+    if let Some(remote) = upstream {
+        candidates.push(remote);
+    }
+    candidates.push("origin".into());
+    candidates.extend(remotes);
+    Ok(candidates)
+}
+
+fn repository_name_from_remotes(
+    cwd: &Path,
+    git_program: &OsStr,
+    candidates: Vec<String>,
+) -> Result<Option<String>, String> {
+    let mut seen = HashSet::new();
+    for remote in candidates {
+        if !seen.insert(remote.clone()) {
+            continue;
+        }
+        if let Some(path) =
+            capture_remote_url(git_program, cwd, &remote)?.and_then(|url| remote_path(&url))
+        {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+fn repository_root_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
+    let output = Command::new(git_program)
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !output.status.success() {
+        return Err("cannot determine the Git repository root".to_owned());
+    }
+    let root = String::from_utf8_lossy(&output.stdout);
+    let root = root.trim();
+    Path::new(&root)
+        .file_name()
+        .map(OsStr::to_string_lossy)
+        .filter(|name| !name.is_empty())
+        .map(|name| name.into_owned())
+        .ok_or_else(|| "cannot determine the Git repository name".to_owned())
+}
+
+fn remote_path(url: &str) -> Option<String> {
+    if matches!(url.as_bytes(), [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic()) {
+        return None;
+    }
+    let path = if let Some((_, address)) = url.split_once("://") {
+        url_remote_path(address)?
+    } else {
+        scp_remote_path(url)?
+    };
+    cleanup_remote_path(path)
+}
+
+fn url_remote_path(address: &str) -> Option<&str> {
+    let (host, path) = address.split_once('/')?;
+    (!host.is_empty()).then(|| path.split(['?', '#']).next().unwrap_or(path))
+}
+
+fn scp_remote_path(url: &str) -> Option<&str> {
+    let colon = scp_separator(url)?;
+    if url[..colon].contains('/') || url[..colon].contains('\\') {
+        return None;
+    }
+    Some(&url[colon + 1..])
+}
+
+fn scp_separator(url: &str) -> Option<usize> {
+    let mut bracketed = false;
+    url.char_indices()
+        .find_map(|(index, character)| match character {
+            '[' => {
+                bracketed = true;
+                None
+            }
+            ']' => {
+                bracketed = false;
+                None
+            }
+            ':' if !bracketed => Some(index),
+            _ => None,
+        })
+}
+
+fn cleanup_remote_path(path: &str) -> Option<String> {
+    let path = path.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    (!path.is_empty()).then(|| path.to_owned())
+}
+
 fn capture<const N: usize>(
     git_program: &OsStr,
     cwd: &Path,
@@ -170,6 +296,26 @@ fn capture<const N: usize>(
     successful_stdout(output)
 }
 
+fn capture_remote_url(
+    git_program: &OsStr,
+    cwd: &Path,
+    remote: &str,
+) -> Result<Option<String>, String> {
+    let output = Command::new(git_program)
+        .args(["remote", "get-url", remote])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let Ok(value) = String::from_utf8(output.stdout) else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    Ok((!value.is_empty()).then(|| value.to_owned()))
+}
+
 fn successful_stdout(output: Output) -> Result<Option<String>, String> {
     if !output.status.success() {
         return Ok(None);
@@ -178,4 +324,67 @@ fn successful_stdout(output: Output) -> Result<Option<String>, String> {
         .map_err(|_| "git returned non-UTF-8 reference data".to_owned())?;
     let value = value.trim();
     Ok((!value.is_empty()).then(|| value.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remote_path;
+
+    #[test]
+    fn windows_paths_are_not_remote_repository_paths() {
+        for path in [
+            r"C:\path\to\repo",
+            "C:/path/to/repo",
+            r"d:\work\repo.git",
+            "d:/work/repo.git",
+            r"\\server\share\repo",
+            "//server/share/repo",
+        ] {
+            assert_eq!(remote_path(path), None, "path: {path}");
+        }
+    }
+
+    #[test]
+    fn git_remote_paths_remain_supported() {
+        for (url, expected) in [
+            ("x:group/project.git", "group/project"),
+            ("a:repo.git", "repo"),
+            ("git@host:group/proj:x.git", "group/proj:x"),
+            ("host:a:b.git", "a:b"),
+            ("git@[2001:db8::1]:group/repo.git", "group/repo"),
+            ("git@github.com:owner/repo.git", "owner/repo"),
+            ("git@example.com:group/project.git", "group/project"),
+            ("ssh://git@example.com/group/project.git", "group/project"),
+            ("https://example.com/group/project.git", "group/project"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
+
+    #[test]
+    fn scp_remote_paths_preserve_url_delimiter_characters() {
+        for (url, expected) in [
+            ("git@example.com:path/to/repo?name.git", "path/to/repo?name"),
+            ("git@example.com:path/to/repo#name.git", "path/to/repo#name"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
+
+    #[test]
+    fn url_metadata_is_excluded_from_remote_repository_paths() {
+        for (url, expected) in [
+            (
+                "https://example.com/owner/repo.git?access_token=TOPSECRET",
+                "owner/repo",
+            ),
+            ("https://example.com/owner/repo.git#fragment", "owner/repo"),
+            (
+                "https://user:secret@example.com/owner/repo.git?token=abc#frag",
+                "owner/repo",
+            ),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(expected), "url: {url}");
+        }
+    }
 }

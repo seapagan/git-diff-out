@@ -8,7 +8,7 @@ use std::{collections::HashSet, ffi::OsStr};
 use fake_program::executable_script;
 
 #[cfg(unix)]
-use git_diff_out::git::detect_base;
+use git_diff_out::git::{detect_base, repository_name};
 use git_diff_out::{
     cli::Mode,
     git::{choose_base, choose_remote, diff_args, resolved_diff_args},
@@ -168,4 +168,39 @@ fn base_detection_rejects_non_utf8_reference_data() {
     let error = detect_base(cwd.path(), program.as_os_str()).unwrap_err();
 
     assert_eq!(error, "git returned non-UTF-8 reference data");
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_name_skips_non_utf8_remote_url_for_later_remote() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("repository-invalid-utf8-then-valid");
+
+    assert_eq!(
+        repository_name(cwd.path(), program.as_os_str()).unwrap(),
+        "group/project"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_name_falls_back_after_non_utf8_remote_url() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("repository-invalid-utf8-fallback");
+    let expected = cwd.path().file_name().unwrap().to_str().unwrap();
+
+    assert_eq!(
+        repository_name(cwd.path(), program.as_os_str()).unwrap(),
+        expected
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repository_name_reports_remote_url_startup_failure() {
+    let cwd = tempdir().unwrap();
+    let (_program_dir, program) = executable_script("repository-get-url-startup-fails");
+    let error = repository_name(cwd.path(), program.as_os_str()).unwrap_err();
+
+    assert!(error.contains("failed to start git"), "{error}");
 }

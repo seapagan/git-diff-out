@@ -16,12 +16,20 @@ pub struct Config {
     pub quiet: bool,
     pub base_branch: Option<String>,
     pub clipboard: ClipboardConfig,
+    pub header: HeaderConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ClipboardConfig {
     pub osc52_fallback: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HeaderConfig {
+    pub enabled: bool,
+    pub note: Option<String>,
 }
 
 impl Default for Config {
@@ -31,6 +39,7 @@ impl Default for Config {
             quiet: false,
             base_branch: None,
             clipboard: ClipboardConfig::default(),
+            header: HeaderConfig::default(),
         }
     }
 }
@@ -56,6 +65,8 @@ impl Config {
 pub struct EffectiveConfig {
     pub output_dir: PathBuf,
     pub quiet: bool,
+    pub header: bool,
+    pub note: Option<String>,
 }
 
 impl EffectiveConfig {
@@ -71,7 +82,22 @@ impl EffectiveConfig {
             QuietOverride::Quiet => true,
             QuietOverride::Verbose => false,
         };
-        Self { output_dir, quiet }
+        let header = if cli.no_header {
+            false
+        } else {
+            cli.header || cli.note.is_some() || config.header.enabled
+        };
+        let note = cli
+            .note
+            .clone()
+            .or_else(|| config.header.note.clone())
+            .filter(|note| note.chars().any(|character| !character.is_whitespace()));
+        Self {
+            output_dir,
+            quiet,
+            header,
+            note,
+        }
     }
 }
 

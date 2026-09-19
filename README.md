@@ -105,16 +105,20 @@ Windows adds the `.exe` suffix to both paths.
 | `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
 | `gd -c`                | Copy unstaged tracked changes                         | Clipboard                        |
 | `gd -C`                | Copy and save unstaged changes (interactive TTY)      | Clipboard and `unstaged.diff`    |
+| `gd -H`                | Add an annotation header                              | Selected destination(s)          |
+| `gd -N`                | Suppress a configured annotation header               | Selected destination(s)          |
+| `gd --note "Review"`  | Add a header with a note                              | Selected destination(s)          |
 | `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output                  |
 | `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
 | `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
 
-When stdout is piped, redirected, or captured, `gd` sends the raw diff to stdout
-automatically and suppresses its implicit `.diff` file. An explicit
+When stdout is piped, redirected, or captured, `gd` sends the rendered payload
+to stdout automatically and suppresses its implicit `.diff` file. An explicit
 `--output-dir`/`-o` is still honoured, producing both stdout and the requested
 file. Use `--stdout`/`-p` to force stdout in an interactive terminal. The flag
-cannot be combined with `--output-dir`/`-o`. In stdout mode, `gd` emits only diff
-bytes on stdout; errors remain on stderr.
+cannot be combined with `--output-dir`/`-o`. In stdout mode, `gd` emits only
+rendered payload bytes on stdout; errors remain on stderr. With annotation
+headers disabled, as they are by default, that payload is the raw Git diff.
 
 `--copy`/`-c` copies the diff without creating gd's normal saved file and cannot
 be combined with `--output-dir`/`-o`. `--copy-save`/`-C` copies and saves when
@@ -123,6 +127,16 @@ only an explicit `--output-dir`/`-o` also saves. `-p -C` on an interactive
 terminal writes stdout, copies, and saves. Every selected destination receives
 the same rendered diff bytes, and failure in one destination does not undo a
 successful destination.
+
+Annotation headers are disabled by default. `--header`/`-H` enables the header,
+while `--no-header`/`-N` disables it for one invocation even when configuration
+enables it. `--note TEXT` adds note text and implies `--header`; an explicit CLI
+note overrides a configured note. `--note` conflicts with `--no-header`, and
+`--header` conflicts with `--no-header`.
+
+An enabled header is part of the common rendered payload, so stdout, clipboard,
+and saved files receive identical annotated bytes. Piping does not remove it;
+use `--no-header` when a downstream tool requires a raw Git diff.
 
 ## Clipboard support
 
@@ -181,6 +195,10 @@ base_branch = "develop"
 
 [clipboard]
 osc52_fallback = false
+
+[header]
+enabled = true
+note = "Review error handling carefully"
 ```
 
 All configuration keys are optional. If `base_branch` is omitted, `gd`
@@ -195,6 +213,10 @@ current working directory. CLI `--quiet` or `--verbose` overrides configured
 `clipboard.osc52_fallback` is disabled by default. When enabled, a local session
 uses OSC 52 if its normal OS clipboard backend is unavailable or fails at runtime.
 SSH sessions always use OSC 52 regardless of this setting.
+
+`header.enabled` defaults to `false`. CLI `--header` or `--no-header` overrides
+that setting. A configured `header.note` appears only when the header is enabled;
+`--note` overrides it and enables the header for that invocation.
 
 ## Output safety
 
