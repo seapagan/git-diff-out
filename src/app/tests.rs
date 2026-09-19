@@ -9,6 +9,10 @@ use crate::{
 };
 
 fn changed_repo() -> tempfile::TempDir {
+    changed_repo_on("main")
+}
+
+fn changed_repo_on(branch: &str) -> tempfile::TempDir {
     let repo = tempfile::tempdir().unwrap();
     let git = |args: &[&str]| {
         let status = Command::new("git")
@@ -23,13 +27,35 @@ fn changed_repo() -> tempfile::TempDir {
             .unwrap();
         assert!(status.success());
     };
-    git(&["init", "-b", "main"]);
+    git(&["init", "-b", branch]);
     git(&["config", "user.name", "Test User"]);
     git(&["config", "user.email", "test@example.invalid"]);
     fs::write(repo.path().join("tracked.txt"), "before\n").unwrap();
     git(&["add", "tracked.txt"]);
     git(&["commit", "-m", "initial"]);
     fs::write(repo.path().join("tracked.txt"), "after café 😀\n").unwrap();
+    repo
+}
+
+fn branch_repo(root: &str) -> tempfile::TempDir {
+    let repo = changed_repo_on(root);
+    for args in [
+        &["switch", "-c", "feature"][..],
+        &["add", "tracked.txt"][..],
+        &["commit", "-m", "feature"][..],
+    ] {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo.path())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
     repo
 }
 
@@ -85,6 +111,48 @@ fn configured_output_directory_does_not_suppress_automatic_stdout() {
         EffectiveConfig::new(&config, &cli, Path::new("/repo")).output_dir,
         Path::new("/repo/configured-diffs")
     );
+}
+
+#[test]
+fn explicit_branch_no_header_stdout_does_not_read_config() {
+    let repo = branch_repo("main");
+    let config_path = repo.path().join("invalid.toml");
+    fs::write(&config_path, "this is not toml").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config_path);
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "branch", "main", "--stdout", "--no-header"]),
+        environment,
+        OutputPlan::new(true, false, false),
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut |_payload, _fallback| Ok(()),
+    )
+    .unwrap();
+
+    assert!(!repo.path().join("branch.diff").exists());
+}
+
+#[test]
+fn branch_no_header_stdout_uses_configured_base() {
+    let repo = branch_repo("develop");
+    let config_path = repo.path().join("config.toml");
+    fs::write(&config_path, "base_branch = 'develop'\n").unwrap();
+    let mut environment = environment(repo.path());
+    environment.config_path = Some(config_path);
+
+    run_with_outputs(
+        Cli::parse_from(["gd", "branch", "--stdout", "--no-header"]),
+        environment,
+        OutputPlan::new(true, false, false),
+        &mut Vec::new(),
+        &mut Vec::new(),
+        &mut |_payload, _fallback| Ok(()),
+    )
+    .unwrap();
+
+    assert!(!repo.path().join("branch.diff").exists());
 }
 
 #[test]

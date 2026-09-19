@@ -348,6 +348,50 @@ fn repository_root_basename_is_used_without_a_usable_remote() {
 }
 
 #[test]
+fn detached_head_uses_origin_repository_name() {
+    let repo = changed_repo();
+    add_origin(&repo, "git@github.com:owner/project.git");
+    repo.git(["switch", "--detach"]);
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", "owner/project", None, &diff);
+
+    assert_stdout(&repo, &["--header"], &expected);
+}
+
+#[test]
+fn duplicate_unusable_origin_falls_back_to_repository_root() {
+    let repo = changed_repo();
+    add_origin(&repo, repo.path().to_str().unwrap());
+    let repository = repo.path().file_name().unwrap().to_str().unwrap();
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", repository, None, &diff);
+
+    assert_stdout(&repo, &["--header"], &expected);
+}
+
+#[test]
+fn file_remote_falls_back_to_repository_root() {
+    let repo = changed_repo();
+    add_origin(&repo, "file:///tmp/project.git");
+    let repository = repo.path().file_name().unwrap().to_str().unwrap();
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", repository, None, &diff);
+
+    assert_stdout(&repo, &["--header"], &expected);
+}
+
+#[test]
+fn posix_path_with_colon_falls_back_to_repository_root() {
+    let repo = changed_repo();
+    add_origin(&repo, "/tmp/group:repo");
+    let repository = repo.path().file_name().unwrap().to_str().unwrap();
+    let diff = repo.git(["diff", "--no-color"]).stdout;
+    let expected = expected_header("Git diff of unstaged changes", repository, None, &diff);
+
+    assert_stdout(&repo, &["--header"], &expected);
+}
+
+#[test]
 fn single_line_note_format_is_unchanged() {
     let repo = changed_repo();
     add_origin(&repo, "git@github.com:seapagan/gd.git");
