@@ -31,6 +31,22 @@ fn add_origin(repo: &Repo, url: &str) {
     repo.git(["remote", "add", "origin", url]);
 }
 
+fn repo_with_changes_for_all_modes() -> Repo {
+    let repo = Repo::new("main");
+    repo.write("tracked.txt", "initial\n");
+    repo.commit_all("initial");
+    repo.write("tracked.txt", "main change\n");
+    repo.commit_all("main change");
+    repo.git(["switch", "-c", "feature"]);
+    repo.write("tracked.txt", "feature change\n");
+    repo.commit_all("feature change");
+    repo.write("tracked.txt", "staged change\n");
+    repo.git(["add", "tracked.txt"]);
+    repo.write("tracked.txt", "unstaged change\n");
+    add_origin(&repo, "git@github.com:seapagan/gd.git");
+    repo
+}
+
 fn expected_header(contents: &str, repository: &str, note: Option<&str>, diff: &[u8]) -> Vec<u8> {
     let mut expected = format!("# contents: {contents}\n# repository: {repository}\n");
     if let Some(note) = note {
@@ -186,18 +202,7 @@ fn configured_note_appears_only_with_enabled_header() {
 
 #[test]
 fn header_uses_exact_contents_text_for_every_mode() {
-    let repo = Repo::new("main");
-    repo.write("tracked.txt", "initial\n");
-    repo.commit_all("initial");
-    repo.write("tracked.txt", "main change\n");
-    repo.commit_all("main change");
-    repo.git(["switch", "-c", "feature"]);
-    repo.write("tracked.txt", "feature change\n");
-    repo.commit_all("feature change");
-    repo.write("tracked.txt", "staged change\n");
-    repo.git(["add", "tracked.txt"]);
-    repo.write("tracked.txt", "unstaged change\n");
-    add_origin(&repo, "git@github.com:seapagan/gd.git");
+    let repo = repo_with_changes_for_all_modes();
 
     for (args, contents, git_args) in [
         (

@@ -158,6 +158,14 @@ pub fn detect_base(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
 }
 
 pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
+    let candidates = repository_remote_candidates(cwd, git_program)?;
+    if let Some(path) = repository_name_from_remotes(cwd, git_program, candidates)? {
+        return Ok(path);
+    }
+    repository_root_name(cwd, git_program)
+}
+
+fn repository_remote_candidates(cwd: &Path, git_program: &OsStr) -> Result<Vec<String>, String> {
     let remotes = capture(git_program, cwd, ["remote"])?
         .map(|value| value.lines().map(str::to_owned).collect::<Vec<_>>())
         .unwrap_or_default();
@@ -186,19 +194,29 @@ pub fn repository_name(cwd: &Path, git_program: &OsStr) -> Result<String, String
     }
     candidates.push("origin".into());
     candidates.extend(remotes);
+    Ok(candidates)
+}
 
+fn repository_name_from_remotes(
+    cwd: &Path,
+    git_program: &OsStr,
+    candidates: Vec<String>,
+) -> Result<Option<String>, String> {
     let mut seen = HashSet::new();
     for remote in candidates {
         if !seen.insert(remote.clone()) {
             continue;
         }
-        if let Some(url) = capture(git_program, cwd, ["remote", "get-url", &remote])? {
-            if let Some(path) = remote_path(&url) {
-                return Ok(path);
-            }
+        if let Some(path) = capture(git_program, cwd, ["remote", "get-url", &remote])?
+            .and_then(|url| remote_path(&url))
+        {
+            return Ok(Some(path));
         }
     }
+    Ok(None)
+}
 
+fn repository_root_name(cwd: &Path, git_program: &OsStr) -> Result<String, String> {
     let root = capture(git_program, cwd, ["rev-parse", "--show-toplevel"])?
         .ok_or_else(|| "cannot determine the Git repository root".to_owned())?;
     Path::new(&root)
