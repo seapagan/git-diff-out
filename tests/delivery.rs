@@ -733,6 +733,72 @@ fn bare_repository_is_not_a_working_tree() {
     assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
 }
 
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_preserves_an_unrelated_git_diagnostic() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-unrelated-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "git repository check failed: fatal: detected dubious ownership in repository at '/repo'"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_reports_only_the_first_meaningful_diagnostic_line() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-noisy-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "git repository check failed: fatal: malformed repository configuration"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_without_a_diagnostic_reports_its_status() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-empty-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(error, "git repository check failed with exit status: 23");
+}
+
 #[test]
 fn unavailable_git_executable_is_actionable() {
     let repo = changed_repo();

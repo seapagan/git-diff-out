@@ -221,13 +221,29 @@ fn ensure_inside_work_tree(environment: &Environment) -> Result<(), Box<dyn Erro
     let output = Command::new(&environment.git_program)
         .args(["rev-parse", "--is-inside-work-tree"])
         .current_dir(&environment.cwd)
-        .stderr(Stdio::null())
+        .env("LC_ALL", "C")
         .output()
         .map_err(|error| format!("failed to start git: {error}"))?;
-    if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true" {
-        Ok(())
-    } else {
-        Err("not inside a Git working tree".into())
+    if output.status.success() {
+        return if String::from_utf8_lossy(&output.stdout).trim() == "true" {
+            Ok(())
+        } else {
+            Err("not inside a Git working tree".into())
+        };
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let diagnostic = stderr.lines().map(str::trim).find(|line| !line.is_empty());
+    if diagnostic.is_some_and(|line| line.starts_with("fatal: not a git repository")) {
+        return Err("not inside a Git working tree".into());
+    }
+    match diagnostic {
+        Some(line) => Err(format!(
+            "git repository check failed: {}",
+            line.chars().take(512).collect::<String>()
+        )
+        .into()),
+        None => Err(format!("git repository check failed with {}", output.status).into()),
     }
 }
 

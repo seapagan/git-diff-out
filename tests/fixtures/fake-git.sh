@@ -1,8 +1,27 @@
 #!/bin/sh
 
 if [ "$1" = rev-parse ] && [ "$2" = --is-inside-work-tree ]; then
-  printf 'true\n'
-  exit 0
+  case "${0##*/}" in
+    work-tree-unrelated-failure)
+      if [ "${LC_ALL:-}" != C ]; then
+        printf 'unexpected locale\n' >&2
+        exit 2
+      fi
+      printf "fatal: detected dubious ownership in repository at '/repo'\n" >&2
+      exit 128
+      ;;
+    work-tree-noisy-failure)
+      printf '\n  \nfatal: malformed repository configuration\nusage: noisy detail\nmore noisy detail\n' >&2
+      exit 128
+      ;;
+    work-tree-empty-failure)
+      exit 23
+      ;;
+    *)
+      printf 'true\n'
+      exit 0
+      ;;
+  esac
 fi
 
 case "${0##*/}" in
