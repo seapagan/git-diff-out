@@ -104,7 +104,8 @@ the same Lizard version used by Codacy. Python 3.10+ is required only for the
 optional local complexity checker. Direct use of
 `python scripts/check_complexity.py` requires Python 3.10+. Ruff and mypy
 provide additional optional formatting, linting, and strict type checking for
-the support script. Lizard is pinned for analyzer parity; Ruff and mypy are not
+the support script. The Lizard checker analyzes non-ignored Rust and Python
+source files. Lizard is pinned for analyzer parity; Ruff and mypy are not
 currently pinned.
 
 For example, `uv tool` can install the optional tools in isolation:

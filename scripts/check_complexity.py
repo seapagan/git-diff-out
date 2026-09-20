@@ -1,4 +1,4 @@
-"""Report Codacy-aligned Rust complexity findings from Lizard output."""
+"""Report Codacy-aligned source complexity findings from Lizard output."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class Thresholds:
 
 @dataclass(frozen=True)
 class FunctionMetric:
-    """Lizard metrics for one Rust function."""
+    """Lizard metrics for one source function."""
 
     path: str
     name: str
@@ -115,7 +115,7 @@ def _integer(row: dict[str, str | None], field: str) -> int:
     return value
 
 
-def _rust_files() -> list[str]:
+def _source_files() -> list[str]:
     output = _run(
         [
             "git",
@@ -126,13 +126,28 @@ def _rust_files() -> list[str]:
             "--exclude-standard",
             "--",
             "*.rs",
+            "*.py",
         ],
     )
     files = sorted(_normalized(path) for path in output.split("\0") if path)
     if not files:
-        message = "no non-ignored Rust source files found"
+        message = "no non-ignored Rust or Python source files found"
         raise CheckerError(message)
     return files
+
+
+def _lizard_command(output_options: Sequence[str], files: Sequence[str]) -> list[str]:
+    return [
+        "lizard",
+        "-l",
+        "rust",
+        "-l",
+        "python",
+        "-i",
+        "-1",
+        *output_options,
+        *files,
+    ]
 
 
 def _function_metrics(output: str, files: set[str]) -> list[FunctionMetric]:
@@ -207,7 +222,7 @@ def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
         missing = sorted(expected_files - actual_files)
         unexpected = sorted(actual_files - expected_files)
         message = (
-            f"Rust analysis file mismatch; missing={missing!r}, "
+            f"source analysis file mismatch; missing={missing!r}, "
             f"unexpected={unexpected!r}"
         )
         raise CheckerError(message)
@@ -284,14 +299,13 @@ def main() -> None:
         )
         raise CheckerError(message)
 
-    files = _rust_files()
-    common = ["lizard", "-l", "rust", "-i", "-1", *files]
+    files = _source_files()
     functions = _function_metrics(
-        _run([*common[:3], "-V", "--csv", *common[3:]]),
+        _run(_lizard_command(["-V", "--csv"], files)),
         set(files),
     )
     file_nloc = _file_metrics(
-        _run([*common[:3], "--xml", *common[3:]]),
+        _run(_lizard_command(["--xml"], files)),
         set(files),
     )
     _report(

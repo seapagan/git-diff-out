@@ -120,8 +120,14 @@ condition_script = ["mypy --version"]
 command = "mypy"
 args = ["--strict", "scripts/check_complexity.py"]
 
+[tasks.python-test]
+description = "Test Python support code"
+condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))"']
+command = "python"
+args = ["-B", "-m", "unittest", "tests/test_check_complexity.py"]
+
 [tasks.complexity]
-description = "Report Codacy-aligned Rust complexity findings without failing verification"
+description = "Report Codacy-aligned Rust and Python complexity findings without failing verification"
 condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))" && lizard --version']
 command = "python"
 args = ["scripts/check_complexity.py"]
@@ -387,6 +393,7 @@ dependencies = [
   "python-format",
   "python-lint",
   "python-type",
+  "python-test",
   "complexity",
   "doc",
   "msrv",
