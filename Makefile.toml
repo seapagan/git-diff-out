@@ -6,6 +6,15 @@
 #   go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 (or use a release binary)
 #   shellcheck from the host platform package manager or official release archive
 #   git from the host platform
+# Optional Python support tooling; related tasks are skipped when unavailable.
+# Python 3.10+ and Lizard provide local parity with Codacy's last documented and
+# verified Lizard version. Strict equality keeps local output deterministic and
+# preserves known parser compatibility:
+#   uv tool install 'lizard==1.23.0'
+# Ruff and mypy are optional and currently unpinned:
+#   uv tool install ruff
+#   uv tool install mypy
+# uv is one convenient installer, not a project requirement.
 #
 # cargo-msrv is needed only when discovering or updating the MSRV:
 #   cargo install cargo-msrv --locked
@@ -14,6 +23,11 @@
 
 [env]
 MSRV_VERSION = "1.85.0"
+COMPLEXITY_LIZARD_VERSION = { value = "1.23.0", condition = { env_not_set = ["COMPLEXITY_LIZARD_VERSION"] } }
+COMPLEXITY_MAX_CCN = { value = "10", condition = { env_not_set = ["COMPLEXITY_MAX_CCN"] } }
+COMPLEXITY_MAX_FUNCTION_NLOC = { value = "50", condition = { env_not_set = ["COMPLEXITY_MAX_FUNCTION_NLOC"] } }
+COMPLEXITY_MAX_PARAMETERS = { value = "8", condition = { env_not_set = ["COMPLEXITY_MAX_PARAMETERS"] } }
+COMPLEXITY_MAX_FILE_NLOC = { value = "500", condition = { env_not_set = ["COMPLEXITY_MAX_FILE_NLOC"] } }
 
 # Coverage
 
@@ -89,6 +103,44 @@ args = [
   "-W",
   "clippy::large_types_passed_by_value",
 ]
+
+[tasks.python-format]
+description = "Check Python support-code formatting"
+condition_script = ["ruff --version"]
+command = "ruff"
+args = ["format", "--check", "."]
+
+[tasks.python-lint]
+description = "Lint Python support code"
+condition_script = ["ruff --version"]
+command = "ruff"
+args = ["check", "."]
+
+[tasks.python-type]
+description = "Type-check Python support code strictly"
+condition_script = ["mypy --version"]
+command = "mypy"
+args = ["--strict", "--exclude-gitignore", "."]
+
+[tasks.python-test]
+description = "Test Python support code"
+condition_script = ['python3 -c "import sys; raise SystemExit(sys.version_info < (3, 10))"']
+command = "python3"
+args = ["-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"]
+
+[tasks.python-test.windows]
+condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))"']
+command = "python"
+
+[tasks.complexity]
+description = "Report Codacy-aligned Rust and Python complexity findings without failing verification"
+condition_script = ['python3 -c "import sys; raise SystemExit(sys.version_info < (3, 10))" && lizard --version']
+command = "python3"
+args = ["scripts/check_complexity.py"]
+
+[tasks.complexity.windows]
+condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))" && lizard --version']
+command = "python"
 
 [tasks.doc]
 description = "Build Rust documentation with warnings denied"
@@ -348,6 +400,11 @@ dependencies = [
   "format",
   "whitespace",
   "quality",
+  "python-format",
+  "python-lint",
+  "python-type",
+  "python-test",
+  "complexity",
   "doc",
   "msrv",
   "audit",
