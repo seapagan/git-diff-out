@@ -171,6 +171,7 @@ fn run_with_outputs(
     copy: &mut ClipboardWriter<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let mode = cli.mode()?;
+    ensure_inside_work_tree(&environment)?;
     if cli.no_header {
         if let Some(result) = stdout_without_config(&mode, &environment, plan) {
             return result;
@@ -214,6 +215,20 @@ fn run_with_outputs(
             copy,
         },
     )
+}
+
+fn ensure_inside_work_tree(environment: &Environment) -> Result<(), Box<dyn Error>> {
+    let output = Command::new(&environment.git_program)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(&environment.cwd)
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true" {
+        Ok(())
+    } else {
+        Err("not inside a Git working tree".into())
+    }
 }
 
 fn load_config(path: Option<&Path>) -> Result<Config, Box<dyn Error>> {

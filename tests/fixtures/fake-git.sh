@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if [ "$1" = rev-parse ] && [ "$2" = --is-inside-work-tree ]; then
+  printf 'true\n'
+  exit 0
+fi
+
 case "${0##*/}" in
   wl-copy|xclip|xsel|pbcopy)
     if [ -n "${GD_TEST_CLIPBOARD_FAIL:-}" ]; then

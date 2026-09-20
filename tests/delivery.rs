@@ -5,7 +5,11 @@ mod fake_program;
 
 #[cfg(target_os = "linux")]
 use std::env;
-use std::{ffi::OsString, fs, io, process::Stdio};
+use std::{
+    ffi::OsString,
+    fs, io,
+    process::{Command, Stdio},
+};
 
 use clap::Parser;
 use common::{Repo, assert_success, gd_command, patch};
@@ -667,18 +671,43 @@ fn file_output_without_a_config_path_uses_defaults() {
 }
 
 #[test]
-fn errors_remain_visible_with_quiet_mode() {
+fn outside_working_tree_reports_concise_error() {
+    let outside = tempdir().unwrap();
+    let output = gd_command(outside.path(), &["1"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
+}
+
+#[test]
+fn working_tree_error_remains_visible_with_quiet_mode() {
     let outside = tempdir().unwrap();
     let output = gd_command(outside.path(), &["--quiet", "--stdout"])
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
+}
+
+#[test]
+fn bare_repository_is_not_a_working_tree() {
+    let bare = tempdir().unwrap();
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .to_ascii_lowercase()
-            .contains("not a git repository")
+        Command::new("git")
+            .args(["init", "--bare"])
+            .current_dir(bare.path())
+            .output()
+            .unwrap()
+            .status
+            .success()
     );
+
+    let output = gd_command(bare.path(), &["--stdout"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
 }
 
 #[test]
