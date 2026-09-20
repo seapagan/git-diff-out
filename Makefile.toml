@@ -106,25 +106,25 @@ args = [
 description = "Check Python support-code formatting"
 condition_script = ["ruff --version"]
 command = "ruff"
-args = ["format", "--check", "scripts/check_complexity.py"]
+args = ["format", "--check", "."]
 
 [tasks.python-lint]
 description = "Lint Python support code"
 condition_script = ["ruff --version"]
 command = "ruff"
-args = ["check", "scripts/check_complexity.py"]
+args = ["check", "."]
 
 [tasks.python-type]
 description = "Type-check Python support code strictly"
 condition_script = ["mypy --version"]
 command = "mypy"
-args = ["--strict", "scripts/check_complexity.py"]
+args = ["--strict", "--exclude-gitignore", "."]
 
 [tasks.python-test]
 description = "Test Python support code"
 condition_script = ['python -c "import sys; raise SystemExit(sys.version_info < (3, 10))"']
 command = "python"
-args = ["-B", "-m", "unittest", "tests/test_check_complexity.py"]
+args = ["-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"]
 
 [tasks.complexity]
 description = "Report Codacy-aligned Rust and Python complexity findings without failing verification"

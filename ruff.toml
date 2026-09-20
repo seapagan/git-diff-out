@@ -9,6 +9,9 @@ ignore = ["COM812"]
   "INP001", # The scripts directory contains executables, not a Python package.
   "T201",   # Printing the report and fatal diagnostics is this CLI's interface.
 ]
+"tests/**/*.py" = [
+  "INP001", # The tests directory contains test/support files, not a Python package.
+]
 
 [lint.pydocstyle]
 convention = "google"
