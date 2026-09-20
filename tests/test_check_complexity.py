@@ -9,6 +9,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# ``Any`` is referenced through a string annotation below. Codacy's Pylint
+# analysis does not count that as usage, so this narrow suppression is required;
+# Ruff and mypy need no equivalent suppression.
 from typing import TYPE_CHECKING, Any, cast  # pylint: disable=unused-import
 from unittest.mock import patch
 
@@ -133,6 +137,37 @@ class ComplexityCheckerTests(unittest.TestCase):
 
         self.assertEqual(files, ["new.py"])
 
+    def test_source_files_deduplicate_conflicted_index_entries(self) -> None:
+        """A conflicted source appears once despite its three index stages."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                CHECKER._run(["git", "init", "-q", "--initial-branch=main"])
+                CHECKER._run(["git", "config", "user.email", "test@example.com"])
+                CHECKER._run(["git", "config", "user.name", "Test User"])
+                source = root / "conflicted.rs"
+                source.write_text("fn value() -> i32 { 0 }\n")
+                CHECKER._run(["git", "add", "conflicted.rs"])
+                CHECKER._run(["git", "commit", "-q", "-m", "base"])
+                CHECKER._run(["git", "switch", "-q", "-c", "other"])
+                source.write_text("fn value() -> i32 { 1 }\n")
+                CHECKER._run(["git", "commit", "-qam", "other"])
+                CHECKER._run(["git", "switch", "-q", "main"])
+                source.write_text("fn value() -> i32 { 2 }\n")
+                CHECKER._run(["git", "commit", "-qam", "main"])
+                with self.assertRaisesRegex(CHECKER.CheckerError, "git merge failed"):
+                    CHECKER._run(["git", "merge", "other"])
+
+                stages = CHECKER._run(["git", "ls-files", "-u", "--", "conflicted.rs"])
+                files = CHECKER._source_files()
+            finally:
+                os.chdir(previous)
+
+        self.assertEqual(len(stages.splitlines()), 3)
+        self.assertEqual(files, ["conflicted.rs"])
+
     @unittest.skipIf(os.name == "nt", "POSIX filenames may contain arbitrary bytes")
     def test_source_files_round_trip_non_utf8_filename_bytes(self) -> None:
         """Git paths with undecodable bytes survive subprocess decoding."""
@@ -143,7 +178,10 @@ class ComplexityCheckerTests(unittest.TestCase):
             try:
                 os.chdir(root)
                 CHECKER._run(["git", "init", "-q"])
-                Path(filename).write_text("pass\n")
+                try:
+                    Path(filename).write_text("pass\n")
+                except OSError as error:
+                    self.skipTest(f"filesystem rejects non-UTF-8 filenames: {error}")
                 files = CHECKER._source_files()
             finally:
                 os.chdir(previous)

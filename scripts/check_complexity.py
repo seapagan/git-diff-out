@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-# XML input is produced by the pinned local Lizard process.
+# XML input is produced by the locally invoked Lizard process.
 from xml.etree.ElementTree import Element, ParseError, fromstring  # nosec B405
 
 MINIMUM_PYTHON = (3, 10)
@@ -140,7 +140,7 @@ def _source_files() -> list[str]:
         ],
     )
     files = sorted(
-        _normalized(path) for path in output.split("\0") if Path(path).is_file()
+        {_normalized(path) for path in output.split("\0") if Path(path).is_file()}
     )
     if not files:
         message = "no non-ignored Rust or Python source files found"
@@ -198,7 +198,7 @@ def _xml_file_measure(
     output: str,
 ) -> tuple[Element, list[str | None], int]:
     try:
-        # XML comes from the pinned local Lizard process, not external input.
+        # Lizard's reported version is checked before its output is parsed here.
         root = fromstring(output)  # noqa: S314  # nosec B314
     except ParseError as error:
         message = f"invalid Lizard XML: {error}"
