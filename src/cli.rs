@@ -147,6 +147,7 @@ impl Cli {
     pub fn command_for(name: &'static str) -> Command {
         Self::command()
             .name(name)
+            .bin_name(name)
             .override_usage(usage(name))
             .after_help(after_help(name))
     }
