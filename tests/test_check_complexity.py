@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -36,8 +36,85 @@ def _expect_equal(actual: object, expected: object) -> None:
         raise AssertionError(message)
 
 
+def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
+    parser = CHECKER.__dict__.get("_file_metrics")
+    if parser is None:
+        message = "checker lacks _file_metrics"
+        raise AssertionError(message)
+    return cast("dict[str, int]", parser(output, expected_files))
+
+
+def _expect_file_metrics_error(
+    output: str,
+    expected_files: set[str],
+    expected_message: str,
+) -> None:
+    checker_error = CHECKER.__dict__["CheckerError"]
+    try:
+        _file_metrics(output, expected_files)
+    except checker_error as error:
+        if expected_message not in str(error):
+            message = f"expected {expected_message!r} in {error!r}"
+            raise AssertionError(message) from error
+    else:
+        message = f"expected CheckerError containing {expected_message!r}"
+        raise AssertionError(message)
+
+
+VALID_XML = """\
+<root><measure type="File"><labels><label>NCSS</label><label>CCN</label></labels>
+<item name="src/main.rs"><value>7</value><value>2</value></item>
+</measure></root>
+"""
+
+INVALID_XML_CASES = (
+    ("<root>", "invalid Lizard XML:"),
+    ("<root />", "expected one XML File measure, found 0"),
+    (
+        '<root><measure type="File"/><measure type="File"/></root>',
+        "expected one XML File measure, found 2",
+    ),
+    (
+        (
+            '<root><measure type="File"><labels><label>CCN</label></labels>'
+            "</measure></root>"
+        ),
+        "XML File measure lacks NCSS: ['CCN']",
+    ),
+    (
+        (
+            '<root><measure type="File"><labels><label>NCSS</label><label>CCN</label>'
+            '</labels><item name="src/main.rs"><value>7</value></item></measure></root>'
+        ),
+        "unexpected XML file record for 'src/main.rs'",
+    ),
+    (
+        (
+            '<root><measure type="File"><labels><label>NCSS</label></labels>'
+            '<item name="src/main.rs"><value>7</value></item>'
+            '<item name="src/main.rs"><value>8</value></item></measure></root>'
+        ),
+        "unexpected XML file record for 'src/main.rs'",
+    ),
+    (
+        (
+            '<root><measure type="File"><labels><label>NCSS</label></labels>'
+            '<item name="src/main.rs"><value>many</value></item></measure></root>'
+        ),
+        "invalid XML NCSS value for 'src/main.rs': 'many'",
+    ),
+    (
+        (
+            '<root><measure type="File"><labels><label>NCSS</label></labels>'
+            '<item name="src/main.rs"><value>-1</value></item></measure></root>'
+        ),
+        "invalid XML NCSS value for 'src/main.rs': '-1'",
+    ),
+)
+
+
 class ComplexityCheckerTests(unittest.TestCase):
-    """Exercise source selection and analyzer command construction."""
+    """Exercise source selection, analyzer commands, and XML validation."""
 
     def test_source_files_include_non_ignored_rust_and_python(self) -> None:
         """Git discovery includes both source types and respects ignores."""
@@ -94,6 +171,25 @@ class ComplexityCheckerTests(unittest.TestCase):
                 "scripts/check_complexity.py",
                 "src/main.rs",
             ],
+        )
+
+    def test_file_metrics_parses_lizard_xml(self) -> None:
+        """Valid Lizard XML produces normalized per-file NCSS values."""
+        _expect_equal(_file_metrics(VALID_XML, {"src/main.rs"}), {"src/main.rs": 7})
+
+    def test_file_metrics_rejects_malformed_xml_records(self) -> None:
+        """Malformed XML structures and values remain fatal."""
+        for output, expected_message in INVALID_XML_CASES:
+            with self.subTest(expected_message=expected_message):
+                _expect_file_metrics_error(output, {"src/main.rs"}, expected_message)
+
+    def test_file_metrics_reports_missing_and_unexpected_files(self) -> None:
+        """Source-set mismatch diagnostics identify both differences."""
+        _expect_file_metrics_error(
+            VALID_XML,
+            {"src/lib.rs"},
+            "source analysis file mismatch; missing=['src/lib.rs'], "
+            "unexpected=['src/main.rs']",
         )
 
 

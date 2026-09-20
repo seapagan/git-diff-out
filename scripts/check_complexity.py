@@ -6,12 +6,16 @@ import csv
 import io
 import os
 import re
-import subprocess
+
+# Subprocess use is the reviewed boundary for invoking Git and Lizard.
+import subprocess  # nosec B404
 import sys
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+# XML input is produced by the pinned local Lizard process.
+from xml.etree.ElementTree import Element, ParseError, fromstring  # nosec B405
 
 MINIMUM_PYTHON = (3, 10)
 
@@ -69,7 +73,8 @@ def _limit(name: str) -> int:
 
 def _run(command: Sequence[str]) -> str:
     try:
-        result = subprocess.run(  # noqa: S603 - fixed executable and argv, no shell.
+        # Controlled argv boundary: fixed executable, separate arguments, no shell.
+        result = subprocess.run(  # noqa: S603  # nosec B603
             command,
             capture_output=True,
             text=True,
@@ -181,10 +186,13 @@ def _function_metrics(output: str, files: set[str]) -> list[FunctionMetric]:
     return metrics
 
 
-def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
+def _xml_file_measure(
+    output: str,
+) -> tuple[Element, list[str | None], int]:
     try:
-        root = ET.fromstring(output)  # noqa: S314 - trusted local Lizard output.
-    except ET.ParseError as error:
+        # XML comes from the pinned local Lizard process, not external input.
+        root = fromstring(output)  # noqa: S314  # nosec B314
+    except ParseError as error:
         message = f"invalid Lizard XML: {error}"
         raise CheckerError(message) from error
 
@@ -197,23 +205,42 @@ def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
     if "NCSS" not in labels:
         message = f"XML File measure lacks NCSS: {labels!r}"
         raise CheckerError(message)
-    nloc_index = labels.index("NCSS")
+    return measure, labels, labels.index("NCSS")
+
+
+def _xml_ncss(path: str, raw_nloc: str | None) -> int:
+    try:
+        nloc = int(raw_nloc) if raw_nloc is not None else -1
+    except ValueError as error:
+        message = f"invalid XML NCSS value for {path!r}: {raw_nloc!r}"
+        raise CheckerError(message) from error
+    if nloc < 0:
+        message = f"invalid XML NCSS value for {path!r}: {raw_nloc!r}"
+        raise CheckerError(message)
+    return nloc
+
+
+def _xml_file_record(
+    item: Element,
+    labels: Sequence[str | None],
+    nloc_index: int,
+) -> tuple[str, int]:
+    path = _normalized(item.get("name", ""))
+    values = [value.text for value in item.findall("./value")]
+    if not path or len(values) != len(labels):
+        message = f"unexpected XML file record for {path!r}"
+        raise CheckerError(message)
+    return path, _xml_ncss(path, values[nloc_index])
+
+
+def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
+    measure, labels, nloc_index = _xml_file_measure(output)
 
     metrics: dict[str, int] = {}
     for item in measure.findall("./item"):
-        path = _normalized(item.get("name", ""))
-        values = [value.text for value in item.findall("./value")]
-        if not path or len(values) != len(labels) or path in metrics:
+        path, nloc = _xml_file_record(item, labels, nloc_index)
+        if path in metrics:
             message = f"unexpected XML file record for {path!r}"
-            raise CheckerError(message)
-        raw_nloc = values[nloc_index]
-        try:
-            nloc = int(raw_nloc) if raw_nloc is not None else -1
-        except ValueError as error:
-            message = f"invalid XML NCSS value for {path!r}: {raw_nloc!r}"
-            raise CheckerError(message) from error
-        if nloc < 0:
-            message = f"invalid XML NCSS value for {path!r}: {raw_nloc!r}"
             raise CheckerError(message)
         metrics[path] = nloc
 
