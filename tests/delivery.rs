@@ -495,6 +495,27 @@ fn multi_output_render_failure_does_not_create_a_destination() {
     assert!(!repo.path().join("unstaged.diff").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn stdout_mode_reports_git_diff_failure() {
+    let repo = changed_repo();
+    let (_program_dir, program) = executable_script("diff-fails");
+
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("git diff failed with"), "{error}");
+}
+
 #[test]
 fn empty_stdout_mode_is_silent_and_creates_no_patch() {
     let repo = Repo::new("main");
