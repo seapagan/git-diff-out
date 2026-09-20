@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 
-use clap::{Command, CommandFactory, Parser, error::ErrorKind};
+use clap::{Command, CommandFactory, Parser, Subcommand, error::ErrorKind};
+use clap_complete::aot::Shell;
 use colored_text::Colorize;
 
 fn usage(name: &str) -> String {
-    format!("{name} [OPTIONS] [MODE]\n  {name} [OPTIONS] {{b|branch}} [BASE]")
+    format!(
+        "{name} [OPTIONS] [MODE]\n  {name} [OPTIONS] {{b|branch}} [BASE]\n  {name} completions <SHELL>"
+    )
 }
 
 fn after_help(name: &str) -> String {
@@ -36,6 +39,10 @@ Use --no-header when a downstream tool requires a raw Git diff."#,
     after_help = after_help("gd")
 )]
 pub struct Cli {
+    /// Administrative commands.
+    #[command(subcommand)]
+    pub(crate) command: Option<CliCommand>,
+
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
     #[arg(value_name = "MODE")]
     mode_name: Option<String>,
@@ -78,6 +85,16 @@ pub struct Cli {
     /// Override quiet mode configured in the config file.
     #[arg(short = 'v', long, conflicts_with = "quiet")]
     verbose: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CliCommand {
+    /// Generate shell completions.
+    Completions {
+        /// Shell for which to generate completions.
+        #[arg(value_enum, value_name = "SHELL")]
+        shell: Shell,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -133,7 +150,9 @@ impl Cli {
     }
 
     pub fn validated(self) -> Result<Self, clap::Error> {
-        self.mode()?;
+        if self.command.is_none() {
+            self.mode()?;
+        }
         Ok(self)
     }
 
