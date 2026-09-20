@@ -12,7 +12,7 @@ use std::{
 };
 
 use clap::Parser;
-use common::{Repo, assert_success, gd_command, patch};
+use common::{Repo, assert_success, gd_command, null_device, patch};
 #[cfg(unix)]
 use fake_program::executable_script;
 use git_diff_out::{app, cli::Cli};
@@ -698,6 +698,8 @@ fn bare_repository_is_not_a_working_tree() {
         Command::new("git")
             .args(["init", "--bare"])
             .current_dir(bare.path())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", null_device())
             .output()
             .unwrap()
             .status
