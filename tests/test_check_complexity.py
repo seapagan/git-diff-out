@@ -147,8 +147,34 @@ class ComplexityCheckerTests(unittest.TestCase):
             ["tracked.py", "tracked.rs", "untracked.py", "untracked.rs"],
         )
 
-    def test_lizard_command_selects_rust_and_python_once(self) -> None:
-        """One command explicitly selects both supported languages."""
+    def test_source_files_exclude_unstaged_deletions_and_renames(self) -> None:
+        """Git discovery returns only source files present in the worktree."""
+        run = CHECKER.__dict__["_run"]
+        source_files = CHECKER.__dict__.get("_source_files")
+        if source_files is None:
+            message = "checker lacks _source_files"
+            raise AssertionError(message)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                run(["git", "init", "-q"])
+                deleted = root / "deleted.py"
+                old = root / "old.py"
+                deleted.write_text("pass\n")
+                old.write_text("pass\n")
+                run(["git", "add", "deleted.py", "old.py"])
+                deleted.unlink()
+                old.rename(root / "new.py")
+                files = source_files()
+            finally:
+                os.chdir(previous)
+
+        _expect_equal(files, ["new.py"])
+
+    def test_lizard_command_terminates_options_before_source_files(self) -> None:
+        """One separator keeps leading-hyphen source paths positional."""
         lizard_command = CHECKER.__dict__.get("_lizard_command")
         if lizard_command is None:
             message = "checker lacks _lizard_command"
@@ -156,7 +182,7 @@ class ComplexityCheckerTests(unittest.TestCase):
         _expect_equal(
             lizard_command(
                 ["-V", "--csv"],
-                ["scripts/check_complexity.py", "src/main.rs"],
+                ["scripts/check_complexity.py", "-odd.py"],
             ),
             [
                 "lizard",
@@ -168,8 +194,9 @@ class ComplexityCheckerTests(unittest.TestCase):
                 "-1",
                 "-V",
                 "--csv",
+                "--",
                 "scripts/check_complexity.py",
-                "src/main.rs",
+                "-odd.py",
             ],
         )
 

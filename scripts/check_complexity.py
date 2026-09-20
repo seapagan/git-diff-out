@@ -134,7 +134,9 @@ def _source_files() -> list[str]:
             "*.py",
         ],
     )
-    files = sorted(_normalized(path) for path in output.split("\0") if path)
+    files = sorted(
+        _normalized(path) for path in output.split("\0") if Path(path).is_file()
+    )
     if not files:
         message = "no non-ignored Rust or Python source files found"
         raise CheckerError(message)
@@ -151,6 +153,7 @@ def _lizard_command(output_options: Sequence[str], files: Sequence[str]) -> list
         "-i",
         "-1",
         *output_options,
+        "--",
         *files,
     ]
 
