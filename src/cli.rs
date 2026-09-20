@@ -35,6 +35,8 @@ Use --no-header when a downstream tool requires a raw Git diff."#,
     name = "gd",
     version,
     about,
+    disable_help_subcommand = true,
+    args_conflicts_with_subcommands = true,
     override_usage = usage("gd"),
     after_help = after_help("gd")
 )]
