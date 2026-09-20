@@ -19,6 +19,8 @@ fn after_help(name: &str) -> String {
   {name} -c              Copy the unstaged diff to the clipboard
   {name} -C              Copy and save the unstaged diff
 
+gd must be run inside a checked-out Git repository; bare repositories are not supported.
+
 Piped or redirected stdout receives the rendered diff automatically.
 Use --no-header when a downstream tool requires a raw Git diff."#,
         "Examples:".bold().underline()

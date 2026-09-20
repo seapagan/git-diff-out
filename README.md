@@ -125,6 +125,9 @@ findings remain advisory and do not fail verification.
 
 ## Usage
 
+`gd` must be run inside a checked-out Git repository; bare repositories are not
+supported. Linked worktrees created with `git worktree` are supported.
+
 | Command                | Meaning                                              | Output                           |
 | ---------------------- | ---------------------------------------------------- | -------------------------------- |
 | `gd`                   | Unstaged tracked changes                             | `unstaged.diff`                  |
