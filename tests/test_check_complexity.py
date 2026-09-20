@@ -1,15 +1,16 @@
-# Copyright (c) 2026 Grant Ramsay
 """Regression tests for the optional local complexity checker."""
 
 from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast  # pylint: disable=unused-import
+from unittest.mock import patch
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -27,38 +28,7 @@ def _load_checker() -> ModuleType:
     return module
 
 
-CHECKER = _load_checker()
-
-
-def _expect_equal(actual: object, expected: object) -> None:
-    if actual != expected:
-        message = f"expected {expected!r}, got {actual!r}"
-        raise AssertionError(message)
-
-
-def _file_metrics(output: str, expected_files: set[str]) -> dict[str, int]:
-    parser = CHECKER.__dict__.get("_file_metrics")
-    if parser is None:
-        message = "checker lacks _file_metrics"
-        raise AssertionError(message)
-    return cast("dict[str, int]", parser(output, expected_files))
-
-
-def _expect_file_metrics_error(
-    output: str,
-    expected_files: set[str],
-    expected_message: str,
-) -> None:
-    checker_error = CHECKER.__dict__["CheckerError"]
-    try:
-        _file_metrics(output, expected_files)
-    except checker_error as error:
-        if expected_message not in str(error):
-            message = f"expected {expected_message!r} in {error!r}"
-            raise AssertionError(message) from error
-    else:
-        message = f"expected CheckerError containing {expected_message!r}"
-        raise AssertionError(message)
+CHECKER = cast("Any", _load_checker())
 
 
 VALID_XML = """\
@@ -114,21 +84,16 @@ INVALID_XML_CASES = (
 
 
 class ComplexityCheckerTests(unittest.TestCase):
-    """Exercise source selection, analyzer commands, and XML validation."""
+    """Exercise checker configuration, parsing, and source analysis."""
 
     def test_source_files_include_non_ignored_rust_and_python(self) -> None:
         """Git discovery includes both source types and respects ignores."""
-        run = CHECKER.__dict__["_run"]
-        source_files = CHECKER.__dict__.get("_source_files")
-        if source_files is None:
-            message = "checker lacks _source_files"
-            raise AssertionError(message)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             previous = Path.cwd()
             try:
                 os.chdir(root)
-                run(["git", "init", "-q"])
+                CHECKER._run(["git", "init", "-q"])
                 (root / ".gitignore").write_text(".venv/\n__pycache__/\n")
                 (root / "tracked.rs").write_text("fn main() {}\n")
                 (root / "tracked.py").write_text("pass\n")
@@ -137,50 +102,58 @@ class ComplexityCheckerTests(unittest.TestCase):
                 (root / "ignored.txt").write_text("not source\n")
                 (root / ".venv").mkdir()
                 (root / ".venv" / "ignored.py").write_text("pass\n")
-                run(["git", "add", ".gitignore", "tracked.rs", "tracked.py"])
-                files = source_files()
+                CHECKER._run(["git", "add", ".gitignore", "tracked.rs", "tracked.py"])
+                files = CHECKER._source_files()
             finally:
                 os.chdir(previous)
 
-        _expect_equal(
+        self.assertEqual(
             files,
             ["tracked.py", "tracked.rs", "untracked.py", "untracked.rs"],
         )
 
     def test_source_files_exclude_unstaged_deletions_and_renames(self) -> None:
         """Git discovery returns only source files present in the worktree."""
-        run = CHECKER.__dict__["_run"]
-        source_files = CHECKER.__dict__.get("_source_files")
-        if source_files is None:
-            message = "checker lacks _source_files"
-            raise AssertionError(message)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             previous = Path.cwd()
             try:
                 os.chdir(root)
-                run(["git", "init", "-q"])
+                CHECKER._run(["git", "init", "-q"])
                 deleted = root / "deleted.py"
                 old = root / "old.py"
                 deleted.write_text("pass\n")
                 old.write_text("pass\n")
-                run(["git", "add", "deleted.py", "old.py"])
+                CHECKER._run(["git", "add", "deleted.py", "old.py"])
                 deleted.unlink()
                 old.rename(root / "new.py")
-                files = source_files()
+                files = CHECKER._source_files()
             finally:
                 os.chdir(previous)
 
-        _expect_equal(files, ["new.py"])
+        self.assertEqual(files, ["new.py"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX filenames may contain arbitrary bytes")
+    def test_source_files_round_trip_non_utf8_filename_bytes(self) -> None:
+        """Git paths with undecodable bytes survive subprocess decoding."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = Path.cwd()
+            filename = os.fsdecode(b"invalid-\xff.py")
+            try:
+                os.chdir(root)
+                CHECKER._run(["git", "init", "-q"])
+                Path(filename).write_text("pass\n")
+                files = CHECKER._source_files()
+            finally:
+                os.chdir(previous)
+
+        self.assertEqual(files, [filename])
 
     def test_lizard_command_terminates_options_before_source_files(self) -> None:
         """One separator keeps leading-hyphen source paths positional."""
-        lizard_command = CHECKER.__dict__.get("_lizard_command")
-        if lizard_command is None:
-            message = "checker lacks _lizard_command"
-            raise AssertionError(message)
-        _expect_equal(
-            lizard_command(
+        self.assertEqual(
+            CHECKER._lizard_command(
                 ["-V", "--csv"],
                 ["scripts/check_complexity.py", "-odd.py"],
             ),
@@ -200,24 +173,165 @@ class ComplexityCheckerTests(unittest.TestCase):
             ],
         )
 
+    def test_function_metrics_parse_lizard_1_23_csv(self) -> None:
+        """Representative verbose Lizard CSV produces function metrics."""
+        output = (
+            "NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end\n"
+            "12,4,100,2,20,func@5-24@src/main.rs,src/main.rs,func,func(),5,24\n"
+        )
+
+        self.assertEqual(
+            CHECKER._function_metrics(output, {"src/main.rs"}),
+            [
+                CHECKER.FunctionMetric(
+                    path="src/main.rs",
+                    name="func",
+                    line=5,
+                    nloc=12,
+                    ccn=4,
+                    parameters=2,
+                ),
+            ],
+        )
+
+    def test_function_metrics_reject_missing_or_incorrect_columns(self) -> None:
+        """The parser rejects CSV without every required named column."""
+        outputs = (
+            "NLOC,CCN,file,function,start\n12,4,src/main.rs,func,5\n",
+            "NLOC,CCN,params,file,function,start\n12,4,2,src/main.rs,func,5\n",
+        )
+        for output in outputs:
+            with (
+                self.subTest(output=output),
+                self.assertRaisesRegex(
+                    CHECKER.CheckerError,
+                    "unexpected CSV columns",
+                ),
+            ):
+                CHECKER._function_metrics(output, {"src/main.rs"})
+
+    def test_function_metrics_reject_malformed_numeric_fields(self) -> None:
+        """Malformed or out-of-range CSV metrics remain fatal."""
+        header = (
+            "NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end"
+        )
+        cases = (
+            ("many,4,100,2,20,loc,src/main.rs,func,func(),5,24", "NLOC"),
+            ("12,-1,100,2,20,loc,src/main.rs,func,func(),5,24", "CCN"),
+            ("12,4,100,nope,20,loc,src/main.rs,func,func(),5,24", "PARAM"),
+            ("12,4,100,2,20,loc,src/main.rs,func,func(),0,24", "start"),
+        )
+        for row, field in cases:
+            with (
+                self.subTest(field=field),
+                self.assertRaisesRegex(
+                    CHECKER.CheckerError,
+                    f"invalid CSV {field} value",
+                ),
+            ):
+                CHECKER._function_metrics(f"{header}\n{row}\n", {"src/main.rs"})
+
+    def test_function_metrics_reject_unexpected_source_path(self) -> None:
+        """CSV records outside the expected Git source set remain fatal."""
+        output = (
+            "NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end\n"
+            "12,4,100,2,20,func@5-24@other.rs,other.rs,func,func(),5,24\n"
+        )
+
+        with self.assertRaisesRegex(
+            CHECKER.CheckerError,
+            "unexpected CSV function record",
+        ):
+            CHECKER._function_metrics(output, {"src/main.rs"})
+
     def test_file_metrics_parses_lizard_xml(self) -> None:
         """Valid Lizard XML produces normalized per-file NCSS values."""
-        _expect_equal(_file_metrics(VALID_XML, {"src/main.rs"}), {"src/main.rs": 7})
+        self.assertEqual(
+            CHECKER._file_metrics(VALID_XML, {"src/main.rs"}),
+            {"src/main.rs": 7},
+        )
 
     def test_file_metrics_rejects_malformed_xml_records(self) -> None:
         """Malformed XML structures and values remain fatal."""
         for output, expected_message in INVALID_XML_CASES:
-            with self.subTest(expected_message=expected_message):
-                _expect_file_metrics_error(output, {"src/main.rs"}, expected_message)
+            with (
+                self.subTest(
+                    expected_message=expected_message,
+                ),
+                self.assertRaisesRegex(
+                    CHECKER.CheckerError,
+                    re.escape(expected_message),
+                ),
+            ):
+                CHECKER._file_metrics(output, {"src/main.rs"})
 
     def test_file_metrics_reports_missing_and_unexpected_files(self) -> None:
         """Source-set mismatch diagnostics identify both differences."""
-        _expect_file_metrics_error(
-            VALID_XML,
-            {"src/lib.rs"},
+        message = (
             "source analysis file mismatch; missing=['src/lib.rs'], "
-            "unexpected=['src/main.rs']",
+            "unexpected=['src/main.rs']"
         )
+        with self.assertRaisesRegex(CHECKER.CheckerError, re.escape(message)):
+            CHECKER._file_metrics(VALID_XML, {"src/lib.rs"})
+
+    def test_collect_findings_uses_strict_greater_than_for_all_metrics(self) -> None:
+        """Every configured threshold allows equality and reports one above."""
+        thresholds = CHECKER.Thresholds(10, 50, 8, 500)
+        equal = CHECKER.FunctionMetric("equal.py", "equal", 1, 50, 10, 8)
+        above = CHECKER.FunctionMetric("above.py", "above", 2, 51, 11, 9)
+
+        self.assertEqual(
+            CHECKER._collect_findings([equal], {"equal.py": 500}, thresholds),
+            [],
+        )
+        self.assertEqual(
+            [
+                finding.metric
+                for finding in CHECKER._collect_findings(
+                    [above],
+                    {"above.py": 501},
+                    thresholds,
+                )
+            ],
+            ["file NLOC", "CCN", "function NLOC", "parameters"],
+        )
+
+    def test_limit_accepts_positive_integer(self) -> None:
+        """A positive decimal threshold is parsed as an integer."""
+        with patch.dict(os.environ, {"TEST_LIMIT": "17"}):
+            self.assertEqual(CHECKER._limit("TEST_LIMIT"), 17)
+
+    def test_limit_rejects_invalid_values(self) -> None:
+        """Zero, negative, non-integer, and empty thresholds are rejected."""
+        for value in ("0", "-1", "1.5", ""):
+            with (
+                self.subTest(value=value),
+                patch.dict(os.environ, {"TEST_LIMIT": value}),
+                self.assertRaisesRegex(
+                    CHECKER.CheckerError,
+                    re.escape(f"TEST_LIMIT must be a positive integer, got {value!r}"),
+                ),
+            ):
+                CHECKER._limit("TEST_LIMIT")
+
+    def test_main_rejects_lizard_version_mismatch(self) -> None:
+        """The checker enforces exact equality with the configured version."""
+        environment = {
+            "COMPLEXITY_LIZARD_VERSION": "1.23.0",
+            "COMPLEXITY_MAX_CCN": "10",
+            "COMPLEXITY_MAX_FUNCTION_NLOC": "50",
+            "COMPLEXITY_MAX_PARAMETERS": "8",
+            "COMPLEXITY_MAX_FILE_NLOC": "500",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(CHECKER, "_run", return_value="1.24.0\n"),
+            self.assertRaisesRegex(
+                CHECKER.CheckerError,
+                "Lizard version mismatch: expected 1.23.0, got '1.24.0'",
+            ),
+        ):
+            CHECKER.main()
 
 
 if __name__ == "__main__":

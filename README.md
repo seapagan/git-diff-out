@@ -92,20 +92,21 @@ Windows adds the `.exe` suffix to both paths.
 
 ## Development checks
 
-Python is not required for ordinary Rust development on `gd`. The Ruff and
-mypy support-code checks and the local complexity checker are optional.
-`cargo make verify` keeps these tasks in its normal verification flow, but
-skips the complexity task when Python is unavailable, Python is older than
-3.10, or Lizard is unavailable. If installed tooling runs and reports an
-error, verification fails.
+Python is not required for ordinary Rust development on `gd`. `cargo make
+verify` includes optional Python support tasks, which skip when their tools are
+unavailable: `python-format` and `python-lint` require Ruff, `python-type`
+requires mypy, and `python-test` requires Python 3.10+. The `complexity` task
+requires Python 3.10+ and Lizard and skips when either is unavailable. If
+installed tooling runs and reports an error, verification fails.
 
-For local parity with Codacy's complexity analysis, install Python 3.10+ and
-the same Lizard version used by Codacy. Python 3.10+ is required only for the
-optional local complexity checker. Direct use of
-`python scripts/check_complexity.py` requires Python 3.10+. Ruff and mypy
-provide additional optional formatting, linting, and strict type checking for
-the support script. The Lizard checker analyzes non-ignored Rust and Python
-source files. Lizard is pinned for analyzer parity; Ruff and mypy are not
+For local parity with Codacy's last documented and verified Lizard version,
+install Python 3.10+ and Lizard 1.23.0. Direct use of
+`python3 scripts/check_complexity.py` on Unix-like systems, or
+`python scripts/check_complexity.py` on Windows, requires Python 3.10+. Ruff
+and mypy provide additional optional formatting, linting, and strict type
+checking for the support script. The Lizard checker analyzes non-ignored Rust
+and Python source files. Lizard uses a strict 1.23.0 pin for deterministic
+local behavior and known parser/output compatibility; Ruff and mypy are not
 currently pinned.
 
 For example, `uv tool` can install the optional tools in isolation:
@@ -118,8 +119,9 @@ uv tool install mypy
 
 `uv` is only one convenient installation method and is not required by the
 project. When Python 3.10+ and Lizard are available, `cargo make complexity`
-treats checker, parser, configuration, and tool-version errors as failures.
-Complexity threshold findings remain advisory and do not fail verification.
+treats checker, parser, configuration, and tool-version errors as failures,
+including an installed Lizard version other than 1.23.0. Complexity threshold
+findings remain advisory and do not fail verification.
 
 ## Usage
 

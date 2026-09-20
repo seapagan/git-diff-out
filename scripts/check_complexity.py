@@ -7,6 +7,10 @@ import io
 import os
 import re
 
+# Security suppressions below are intentional and tool-specific: Bandit/Codacy
+# consumes the B-coded ``nosec`` comments; matching Ruff S-coded suppressions
+# remain for equivalent Ruff security rules when enabled. Do not remove either
+# without rerunning Bandit/Codacy and Ruff.
 # Subprocess use is the reviewed boundary for invoking Git and Lizard.
 import subprocess  # nosec B404
 import sys
@@ -78,6 +82,7 @@ def _run(command: Sequence[str]) -> str:
             command,
             capture_output=True,
             text=True,
+            errors="surrogateescape",
             check=False,
         )
     except FileNotFoundError as error:
