@@ -1,5 +1,25 @@
 use std::process::Command;
 
+#[cfg(unix)]
+use std::fs;
+
+#[cfg(unix)]
+const BASH_COMPLETION_HARNESS: &str = r#"
+source "$1"
+completion_spec=($(complete -p "$2"))
+for ((i = 0; i < ${#completion_spec[@]}; i++)); do
+    if [[ ${completion_spec[i]} == -F ]]; then
+        completion_function=${completion_spec[i + 1]}
+        break
+    fi
+done
+[[ -n ${completion_function:-} ]] || exit 1
+COMP_WORDS=("$2" completions "")
+COMP_CWORD=2
+"$completion_function" "$2" "" completions
+printf '%s\n' "${COMPREPLY[@]}"
+"#;
+
 fn gd(args: &[&str]) -> std::process::Output {
     let directory = tempfile::tempdir().expect("temporary directory should be created");
     Command::new(env!("CARGO_BIN_EXE_gd"))
@@ -15,6 +35,46 @@ fn gd(args: &[&str]) -> std::process::Output {
 
 fn completion(shell: &str) -> std::process::Output {
     gd(&["completions", shell])
+}
+
+#[cfg(unix)]
+fn bash_completion_candidates(executable: &str, binary_name: &str) -> Vec<String> {
+    let directory = tempfile::tempdir().expect("temporary directory should be created");
+    let script = Command::new(executable)
+        .args(["completions", "bash"])
+        .current_dir(directory.path())
+        .output()
+        .expect("completion generator should run");
+    assert!(script.status.success());
+    assert!(script.stderr.is_empty());
+
+    let script_path = directory.path().join("completion.bash");
+    fs::write(&script_path, script.stdout).expect("completion script should be written");
+    let output = Command::new("bash")
+        .args([
+            "--noprofile",
+            "--norc",
+            "-c",
+            BASH_COMPLETION_HARNESS,
+            "bash",
+        ])
+        .arg(&script_path)
+        .arg(binary_name)
+        .output()
+        .expect("bash should run");
+    assert!(
+        output.status.success(),
+        "{binary_name}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    String::from_utf8(output.stdout)
+        .expect("completion candidates should be UTF-8")
+        .lines()
+        .filter(|candidate| !candidate.is_empty() && !candidate.starts_with('-'))
+        .map(str::to_owned)
+        .collect()
 }
 
 #[test]
@@ -40,6 +100,23 @@ fn generates_each_supported_shell_completion_outside_a_repository() {
             output.stderr.is_empty(),
             "{shell}: {}",
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn bash_completes_supported_shells_for_both_public_binary_names() {
+    let expected = ["bash", "elvish", "fish", "powershell", "zsh"];
+
+    for (executable, binary_name) in [
+        (env!("CARGO_BIN_EXE_gd"), "gd"),
+        (env!("CARGO_BIN_EXE_git-diff-out"), "git-diff-out"),
+    ] {
+        assert_eq!(
+            bash_completion_candidates(executable, binary_name),
+            expected,
+            "{binary_name}"
         );
     }
 }
