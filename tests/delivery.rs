@@ -5,10 +5,14 @@ mod fake_program;
 
 #[cfg(target_os = "linux")]
 use std::env;
-use std::{ffi::OsString, fs, io, process::Stdio};
+use std::{
+    ffi::OsString,
+    fs, io,
+    process::{Command, Stdio},
+};
 
 use clap::Parser;
-use common::{Repo, assert_success, gd_command, patch};
+use common::{Repo, assert_success, gd_command, null_device, patch};
 #[cfg(unix)]
 use fake_program::executable_script;
 use git_diff_out::{app, cli::Cli};
@@ -491,6 +495,27 @@ fn multi_output_render_failure_does_not_create_a_destination() {
     assert!(!repo.path().join("unstaged.diff").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn stdout_mode_reports_git_diff_failure() {
+    let repo = changed_repo();
+    let (_program_dir, program) = executable_script("diff-fails");
+
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("git diff failed with"), "{error}");
+}
+
 #[test]
 fn empty_stdout_mode_is_silent_and_creates_no_patch() {
     let repo = Repo::new("main");
@@ -667,18 +692,111 @@ fn file_output_without_a_config_path_uses_defaults() {
 }
 
 #[test]
-fn errors_remain_visible_with_quiet_mode() {
+fn outside_working_tree_reports_concise_error() {
+    let outside = tempdir().unwrap();
+    let output = gd_command(outside.path(), &["1"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
+}
+
+#[test]
+fn working_tree_error_remains_visible_with_quiet_mode() {
     let outside = tempdir().unwrap();
     let output = gd_command(outside.path(), &["--quiet", "--stdout"])
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
+}
+
+#[test]
+fn bare_repository_is_not_a_working_tree() {
+    let bare = tempdir().unwrap();
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .to_ascii_lowercase()
-            .contains("not a git repository")
+        Command::new("git")
+            .args(["init", "--bare"])
+            .current_dir(bare.path())
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", null_device())
+            .output()
+            .unwrap()
+            .status
+            .success()
     );
+
+    let output = gd_command(bare.path(), &["--stdout"]).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.stderr, b"gd: not inside a Git working tree\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_preserves_an_unrelated_git_diagnostic() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-unrelated-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "git repository check failed: fatal: detected dubious ownership in repository at '/repo'"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_reports_only_the_first_meaningful_diagnostic_line() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-noisy-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(
+        error,
+        "git repository check failed: fatal: malformed repository configuration"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn work_tree_probe_without_a_diagnostic_reports_its_status() {
+    let repo = Repo::new("main");
+    let (_program_dir, program) = executable_script("work-tree-empty-failure");
+    let error = app::run_in_with_writer(
+        Cli::parse_from(["gd", "--stdout"]),
+        app::Environment {
+            cwd: repo.path().to_path_buf(),
+            config_path: None,
+            git_program: program.into_os_string(),
+        },
+        &mut Vec::new(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert_eq!(error, "git repository check failed with exit status: 23");
 }
 
 #[test]
