@@ -269,6 +269,27 @@ fn alias_help_uses_its_own_name() {
 }
 
 #[test]
+fn subcommand_help_uses_the_public_binary_name() {
+    for (public_name, runtime_name, expected_usage) in [
+        ("gd", "gd.exe", "Usage: gd completions <SHELL>"),
+        (
+            "git-diff-out",
+            "git-diff-out.exe",
+            "Usage: git-diff-out completions <SHELL>",
+        ),
+    ] {
+        let error = Cli::command_for(public_name)
+            .try_get_matches_from([runtime_name, "completions", "--help"])
+            .expect_err("help should stop parsing");
+        let help = error.to_string();
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(help.contains(expected_usage), "{help}");
+        assert!(!help.contains(runtime_name), "{help}");
+    }
+}
+
+#[test]
 fn alias_prefixes_application_errors_with_its_own_name() {
     let directory = tempfile::tempdir().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_git-diff-out"))

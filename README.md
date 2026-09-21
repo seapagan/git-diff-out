@@ -100,8 +100,9 @@ Windows adds the `.exe` suffix to both paths.
 
 ## Usage
 
-`gd` must be run inside a checked-out Git repository; bare repositories are not
-supported. Linked worktrees created with `git worktree` are supported.
+Diff commands must run inside a checked-out Git repository; bare repositories
+are not supported. Linked worktrees created with `git worktree` are supported.
+The `completions` command works from any directory.
 
 | Command                | Meaning                                              | Output                           |
 | ---------------------- | ---------------------------------------------------- | -------------------------------- |
@@ -148,6 +149,96 @@ note overrides a configured note. `--note` conflicts with `--no-header`, and
 An enabled header is part of the common rendered payload, so stdout, clipboard,
 and saved files receive identical annotated bytes. Piping does not remove it;
 use `--no-header` when a downstream tool requires a raw Git diff.
+
+## Shell completions
+
+Generate a completion script on stdout with:
+
+```text
+gd completions <shell>
+```
+
+Supported values are `bash`, `zsh`, `fish`, `powershell`, and `elvish`.
+
+### Bash
+
+Load completions for the current session:
+
+```bash
+source <(gd completions bash)
+```
+
+Add that line to `~/.bashrc` to load completions in each new Bash session.
+
+### Zsh
+
+Save the script as `_gd` in a per-user completion directory:
+
+```zsh
+mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
+gd completions zsh > "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_gd"
+```
+
+Add the directory to `fpath` in `~/.zshrc` before the existing `compinit` call,
+or add all three lines if `compinit` is not configured:
+
+```zsh
+fpath=("${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions" $fpath)
+autoload -Uz compinit
+compinit
+```
+
+### Fish
+
+Fish loads per-user completion files from its configuration directory:
+
+```fish
+mkdir -p ~/.config/fish/completions
+gd completions fish > ~/.config/fish/completions/gd.fish
+```
+
+Use `$XDG_CONFIG_HOME/fish/completions` instead when `XDG_CONFIG_HOME` is set.
+
+### PowerShell
+
+Save the script beside the current user's PowerShell profile, add a profile
+entry that loads it, then reload the profile:
+
+```powershell
+$completionDir = Join-Path (Split-Path -Parent $PROFILE) 'completions'
+$completionFile = Join-Path $completionDir 'gd-completions.ps1'
+New-Item -ItemType Directory -Force $completionDir | Out-Null
+gd completions powershell | Set-Content $completionFile
+if (!(Test-Path $PROFILE)) {
+    New-Item -ItemType File -Force $PROFILE | Out-Null
+}
+Add-Content -Path $PROFILE -Value ". '$completionFile'"
+. $PROFILE
+```
+
+`$PROFILE` selects the correct per-user path for the active PowerShell edition
+and host.
+
+### Elvish
+
+Save the generated code under Elvish's per-user configuration directory:
+
+```sh
+mkdir -p ~/.config/elvish
+gd completions elvish > ~/.config/elvish/gd-completions.elv
+```
+
+Then add this line to `~/.config/elvish/rc.elv`:
+
+```elvish
+eval (slurp < ~/.config/elvish/gd-completions.elv)
+```
+
+When `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/elvish` for both files.
+
+Regenerate saved completion files after upgrading `gd` so they match the
+installed CLI. Plain Windows `cmd.exe` has no native programmable,
+application-specific completion mechanism and is not supported.
 
 ## Clipboard support
 

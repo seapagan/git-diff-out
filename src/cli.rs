@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 
-use clap::{Command, CommandFactory, Parser, error::ErrorKind};
+use clap::{Command, CommandFactory, Parser, Subcommand, error::ErrorKind};
+use clap_complete::aot::Shell;
 use colored_text::Colorize;
 
 fn usage(name: &str) -> String {
-    format!("{name} [OPTIONS] [MODE]\n  {name} [OPTIONS] {{b|branch}} [BASE]")
+    format!(
+        "{name} [OPTIONS] [MODE]\n  {name} [OPTIONS] {{b|branch}} [BASE]\n  {name} completions <SHELL>"
+    )
 }
 
 fn after_help(name: &str) -> String {
@@ -32,10 +35,16 @@ Use --no-header when a downstream tool requires a raw Git diff."#,
     name = "gd",
     version,
     about,
+    disable_help_subcommand = true,
+    args_conflicts_with_subcommands = true,
     override_usage = usage("gd"),
     after_help = after_help("gd")
 )]
 pub struct Cli {
+    /// Administrative commands.
+    #[command(subcommand)]
+    pub(crate) command: Option<CliCommand>,
+
     /// Diff mode: u[nstaged], s[taged], a[ll], b[ranch], or a commit count.
     #[arg(value_name = "MODE")]
     mode_name: Option<String>,
@@ -78,6 +87,16 @@ pub struct Cli {
     /// Override quiet mode configured in the config file.
     #[arg(short = 'v', long, conflicts_with = "quiet")]
     verbose: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CliCommand {
+    /// Generate shell completions.
+    Completions {
+        /// Shell for which to generate completions.
+        #[arg(value_enum, value_name = "SHELL")]
+        shell: Shell,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -128,12 +147,15 @@ impl Cli {
     pub fn command_for(name: &'static str) -> Command {
         Self::command()
             .name(name)
+            .bin_name(name)
             .override_usage(usage(name))
             .after_help(after_help(name))
     }
 
     pub fn validated(self) -> Result<Self, clap::Error> {
-        self.mode()?;
+        if self.command.is_none() {
+            self.mode()?;
+        }
         Ok(self)
     }
 
@@ -141,6 +163,9 @@ impl Cli {
         let Some(name) = self.mode_name.as_deref() else {
             return Ok(Mode::Default);
         };
+        if name == "completions" {
+            return Err(completions_conflict_error());
+        }
         if self.base.is_some() && !matches!(name, "b" | "branch") {
             return Err(base_error());
         }
@@ -167,6 +192,13 @@ impl Cli {
             QuietOverride::None
         }
     }
+}
+
+fn completions_conflict_error() -> clap::Error {
+    clap::Error::raw(
+        ErrorKind::ArgumentConflict,
+        "the 'completions' subcommand cannot be combined with diff options or arguments",
+    )
 }
 
 fn base_error() -> clap::Error {

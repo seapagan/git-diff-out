@@ -20,6 +20,7 @@ path = "src/bin/git-diff-out.rs"
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
+clap_complete = "4.6.11"
 colored_text = "0.5.1"
 directories = "6.0.0"
 serde = { version = "1.0.229", features = ["derive"] }
