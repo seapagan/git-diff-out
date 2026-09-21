@@ -23,6 +23,14 @@ download() {
     fi
 }
 
+normalize_dir() {
+    value=$1
+    while [ "$value" != / ] && [ "${value%/}" != "$value" ]; do
+        value=${value%/}
+    done
+    printf '%s\n' "$value"
+}
+
 main() {
     target=$(detect_target)
     tmp_dir=$(mktemp -d)
@@ -39,7 +47,19 @@ main() {
         fi
     fi
 
-    install_dir=${GD_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}
+    install_dir=$(normalize_dir "${GD_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}")
+    man_dir=
+    if [ "${GD_SKIP_MAN:-}" = 1 ]; then
+        printf 'Skipped man page installation because GD_SKIP_MAN=1.\n'
+    elif [ -n "${GD_MAN_DIR:-}" ]; then
+        man_dir=$(normalize_dir "$GD_MAN_DIR")
+    else
+        case "$install_dir" in
+            */bin) man_dir=${install_dir%/bin}/share/man/man1 ;;
+            *) printf 'Skipped man page installation: set GD_MAN_DIR for binary directory %s.\n' "$install_dir" ;;
+        esac
+    fi
+
     asset="git-diff-out-v${version}-${target}.tar.gz"
     download "https://github.com/seapagan/git-diff-out/releases/download/${version}/${asset}" "$tmp_dir/$asset"
     tar -xzf "$tmp_dir/$asset" -C "$tmp_dir"
@@ -47,10 +67,22 @@ main() {
         printf 'error: release archive is missing gd or git-diff-out\n' >&2
         return 1
     fi
+    if [ -n "$man_dir" ] && [ ! -f "$tmp_dir/gd.1" ]; then
+        printf 'error: release archive is missing gd.1\n' >&2
+        return 1
+    fi
 
-    mkdir -p "$install_dir"
+    if [ -n "$man_dir" ]; then
+        mkdir -p "$install_dir" "$man_dir"
+    else
+        mkdir -p "$install_dir"
+    fi
     install -m 755 "$tmp_dir/gd" "$tmp_dir/git-diff-out" "$install_dir/"
     printf 'Installed git-diff-out %s to %s (gd, git-diff-out).\n' "$version" "$install_dir"
+    if [ -n "$man_dir" ]; then
+        install -m 644 "$tmp_dir/gd.1" "$man_dir/gd.1"
+        printf 'Installed gd.1 to %s.\n' "$man_dir"
+    fi
     case ":${PATH:-}:" in
         *":$install_dir:"*) ;;
         *) printf 'warning: %s is not on PATH; add it to PATH to use gd and git-diff-out.\n' "$install_dir" >&2 ;;

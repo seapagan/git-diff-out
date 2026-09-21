@@ -47,7 +47,8 @@ chmod +x "$root/bin/curl" "$root/wget-bin/wget"
 
 printf 'new gd\n' > "$root/archive/gd"
 printf 'new git-diff-out\n' > "$root/archive/git-diff-out"
-tar -czf "$root/release.tar.gz" -C "$root/archive" gd git-diff-out
+printf '.TH GD 1\n.SH NAME\ngd \\- test manual\n' > "$root/archive/gd.1"
+tar -czf "$root/release.tar.gz" -C "$root/archive" gd git-diff-out gd.1
 printf '{"tag_name": "0.2.0"}\n' > "$root/latest.json"
 
 TEST_REAL_UNAME=$(command -v uname)
@@ -66,6 +67,15 @@ run_install() {
 assert_asset() {
     expected="git-diff-out-v${GD_VERSION:-0.2.0}-$1.tar.gz"
     grep -q "/releases/download/${GD_VERSION:-0.2.0}/$expected" "$TEST_LOG" || fail "wrong asset: $expected"
+}
+
+reset_install_env() {
+    GD_INSTALL_DIR=
+    GD_MAN_DIR=
+    GD_SKIP_MAN=
+    XDG_BIN_HOME=
+    HOME="$root/home"
+    export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN XDG_BIN_HOME HOME
 }
 
 TEST_OS=Linux TEST_ARCH=x86_64 GD_VERSION=0.1.0 GD_INSTALL_DIR="$root/install"
@@ -127,6 +137,67 @@ HOME="$root/home"
 export HOME
 run_install
 test -x "$HOME/.local/bin/gd" || fail 'HOME default was not used'
+
+TEST_OS=Linux TEST_ARCH=x86_64 GD_VERSION=0.1.0
+TEST_BIN=$root/bin
+reset_install_env
+HOME="$root/default-home"
+run_install
+test -x "$HOME/.local/bin/gd" || fail 'default layout did not receive gd'
+test -f "$HOME/.local/share/man/man1/gd.1" || fail 'default man page was not installed'
+
+reset_install_env
+GD_INSTALL_DIR="$root/prefix/bin"
+run_install
+test -f "$root/prefix/share/man/man1/gd.1" || fail 'conventional man page was not installed'
+test ! -x "$root/prefix/share/man/man1/gd.1" || fail 'man page is executable'
+
+reset_install_env
+GD_INSTALL_DIR="$root/trailing/bin/"
+run_install
+test -f "$root/trailing/share/man/man1/gd.1" || fail 'trailing slash changed man directory derivation'
+
+reset_install_env
+GD_INSTALL_DIR="$root/arbitrary"
+run_install
+test -x "$root/arbitrary/gd" || fail 'arbitrary directory did not receive gd'
+grep -q 'Skipped man page' "$root/output" || fail 'arbitrary directory skip was not reported'
+
+reset_install_env
+GD_INSTALL_DIR="$root/explicit/bin"
+GD_MAN_DIR="$root/manual/man1"
+run_install
+test -f "$GD_MAN_DIR/gd.1" || fail 'GD_MAN_DIR was not used'
+
+reset_install_env
+GD_INSTALL_DIR="$root/skipped/bin"
+GD_MAN_DIR="$root/ignored/man1"
+GD_SKIP_MAN=1
+run_install
+test ! -e "$GD_MAN_DIR/gd.1" || fail 'GD_SKIP_MAN did not take precedence'
+
+tar -czf "$root/missing-man.tar.gz" -C "$root/archive" gd git-diff-out
+reset_install_env
+GD_INSTALL_DIR="$root/missing/bin"
+mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+TEST_ARCHIVE=$root/missing-man.tar.gz
+if run_install; then fail 'archive without gd.1 succeeded'; fi
+grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'missing man page replaced gd'
+grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'missing man page replaced git-diff-out'
+
+reset_install_env
+GD_INSTALL_DIR="$root/blocked-install/bin"
+mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+printf 'not a directory\n' > "$root/man-blocker"
+GD_MAN_DIR="$root/man-blocker/man1"
+TEST_ARCHIVE=$root/release.tar.gz
+if run_install; then fail 'blocked man directory succeeded'; fi
+grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'man directory failure replaced gd'
+grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man directory failure replaced git-diff-out'
 
 TEST_OS='' TEST_ARCH='' GD_VERSION=0.1.0
 TEST_BIN=$root/bin
