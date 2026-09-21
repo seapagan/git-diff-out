@@ -62,10 +62,13 @@ fn generated_manual_is_deterministic_and_structured() {
             "An explicit BASE takes precedence",
             "With non\\-terminal stdout",
             "Every selected destination receives the header",
+            "when file output is active",
+            "absolute path",
             "XDG_CONFIG_HOME",
             "gitrevisions",
         ],
     );
+    assert!(!roff.contains("gd\\-completions(1)"), "{roff}");
 }
 
 fn assert_sections(roff: &str) {

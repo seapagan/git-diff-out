@@ -78,6 +78,13 @@ reset_install_env() {
     export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN XDG_BIN_HOME HOME
 }
 
+inherited_man_dir="$root/inherited-man/man1"
+mkdir -p "$inherited_man_dir"
+printf 'do not replace\n' > "$inherited_man_dir/gd.1"
+GD_MAN_DIR=$inherited_man_dir
+export GD_MAN_DIR
+reset_install_env
+
 TEST_OS=Linux TEST_ARCH=x86_64 GD_VERSION=0.1.0 GD_INSTALL_DIR="$root/install"
 TEST_BIN=$root/bin
 export TEST_OS TEST_ARCH GD_VERSION GD_INSTALL_DIR
@@ -93,6 +100,7 @@ if [ ! -x "$GD_INSTALL_DIR/gd" ] || [ ! -x "$GD_INSTALL_DIR/git-diff-out" ]; the
     fail 'binaries are not executable'
 fi
 grep -q 'add it to PATH' "$root/output" || fail 'missing PATH warning'
+grep -q '^do not replace$' "$inherited_man_dir/gd.1" || fail 'inherited GD_MAN_DIR was not isolated'
 
 GD_VERSION=v0.1.0
 run_install
@@ -199,6 +207,7 @@ if run_install; then fail 'blocked man directory succeeded'; fi
 grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'man directory failure replaced gd'
 grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man directory failure replaced git-diff-out'
 
+reset_install_env
 TEST_OS='' TEST_ARCH='' GD_VERSION=0.1.0
 TEST_BIN=$root/bin
 if [ -n "${EXPECTED_INSTALL_TARGET:-}" ]; then

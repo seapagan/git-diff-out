@@ -103,12 +103,12 @@ pub(super) fn render_output(output: &mut Vec<u8>) -> io::Result<()> {
     );
     paragraph(
         &mut roff,
-        "An empty diff leaves stdout empty, does not change the clipboard, and removes a stale mode-specific file. File output uses a temporary file in the destination directory and replaces the final path only after Git succeeds. When several destinations are active, gd attempts each one and reports their combined failures.",
+        "An empty diff leaves stdout empty, does not change the clipboard, and removes a stale mode-specific file when file output is active. File output uses a temporary file in the destination directory and replaces the final path only after Git succeeds. When several destinations are active, gd attempts each one and reports their combined failures.",
     );
     roff.to_writer(output)
 }
 
-pub(super) fn render_subcommand_details(command: &Command, output: &mut Vec<u8>) -> io::Result<()> {
+pub(super) fn render_subcommands(command: &Command, output: &mut Vec<u8>) -> io::Result<()> {
     let subcommand = command
         .get_subcommands()
         .find(|item| item.get_name() == "completions")
@@ -128,7 +128,7 @@ pub(super) fn render_subcommand_details(command: &Command, output: &mut Vec<u8>)
         .map(|value| value.get_name().to_owned())
         .collect::<Vec<_>>()
         .join(", ");
-    let mut roff = Roff::new();
+    let mut roff = section("SUBCOMMANDS");
     definition(
         &mut roff,
         vec![bold(subcommand.get_name()), roman(" "), italic(value_name)],
@@ -183,7 +183,7 @@ pub(super) fn render_environment(output: &mut Vec<u8>) -> io::Result<()> {
     definition(
         &mut roff,
         vec![bold("XDG_CONFIG_HOME, HOME")],
-        "Select the configuration directory on Linux. gd uses $XDG_CONFIG_HOME/git-diff-out/config.toml when XDG_CONFIG_HOME is set, otherwise $HOME/.config/git-diff-out/config.toml. macOS uses HOME for the Application Support path.",
+        "Select the configuration directory on Linux. gd uses $XDG_CONFIG_HOME/git-diff-out/config.toml when XDG_CONFIG_HOME is an absolute path. When it is unset, empty, or relative, gd uses $HOME/.config/git-diff-out/config.toml. macOS uses HOME for the Application Support path.",
     );
     definition(
         &mut roff,
@@ -273,12 +273,12 @@ pub(super) fn render_files(output: &mut Vec<u8>) -> io::Result<()> {
     definition(
         &mut roff,
         vec![bold("$XDG_CONFIG_HOME/git-diff-out/config.toml")],
-        "Linux configuration path when XDG_CONFIG_HOME is set.",
+        "Linux configuration path when XDG_CONFIG_HOME is an absolute path.",
     );
     definition(
         &mut roff,
         vec![bold("$HOME/.config/git-diff-out/config.toml")],
-        "Linux configuration path when XDG_CONFIG_HOME is unset.",
+        "Linux configuration path when XDG_CONFIG_HOME is unset, empty, or relative.",
     );
     definition(
         &mut roff,

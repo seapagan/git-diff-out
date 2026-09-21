@@ -129,8 +129,7 @@ fn render_diff_sections(output: &mut Vec<u8>) -> io::Result<()> {
 
 fn render_cli_sections(manual: &Man, command: &Command, output: &mut Vec<u8>) -> io::Result<()> {
     manual.render_options_section(output)?;
-    manual.render_subcommands_section(output)?;
-    content::render_subcommand_details(command, output)?;
+    content::render_subcommands(command, output)?;
     Ok(())
 }
 
