@@ -157,15 +157,40 @@ fn rejects_the_generated_help_subcommand() {
 #[test]
 fn rejects_diff_arguments_combined_with_completions() {
     for args in [
+        &["--quiet", "completions", "bash"][..],
+        &["--no-header", "completions", "zsh"][..],
         &["--header", "completions", "bash"][..],
-        &["1", "completions", "bash"][..],
     ] {
         let output = gd(args);
+        let stderr = String::from_utf8(output.stderr).expect("diagnostic should be UTF-8");
 
         assert_eq!(output.status.code(), Some(2), "{args:?}");
         assert!(output.stdout.is_empty(), "{args:?}");
-        assert!(!output.stderr.is_empty(), "{args:?}");
+        assert!(
+            stderr.contains(
+                "the 'completions' subcommand cannot be combined with diff options or arguments"
+            ),
+            "{args:?}: {stderr}"
+        );
+        assert!(
+            !stderr.contains("BASE is only valid with branch mode"),
+            "{args:?}"
+        );
+        assert!(!stderr.contains("invalid mode or commit count"), "{args:?}");
     }
+
+    let args = &["1", "completions", "bash"];
+    let output = gd(args);
+    let stderr = String::from_utf8(output.stderr).expect("diagnostic should be UTF-8");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(!stderr.is_empty());
+    assert!(
+        !stderr.contains("BASE is only valid with branch mode"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("invalid mode or commit count"), "{stderr}");
 }
 
 #[test]

@@ -163,6 +163,9 @@ impl Cli {
         let Some(name) = self.mode_name.as_deref() else {
             return Ok(Mode::Default);
         };
+        if name == "completions" {
+            return Err(completions_conflict_error());
+        }
         if self.base.is_some() && !matches!(name, "b" | "branch") {
             return Err(base_error());
         }
@@ -189,6 +192,13 @@ impl Cli {
             QuietOverride::None
         }
     }
+}
+
+fn completions_conflict_error() -> clap::Error {
+    clap::Error::raw(
+        ErrorKind::ArgumentConflict,
+        "the 'completions' subcommand cannot be combined with diff options or arguments",
+    )
 }
 
 fn base_error() -> clap::Error {
