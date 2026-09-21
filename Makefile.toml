@@ -183,6 +183,19 @@ args = ["--persona=pedantic", "."]
 
 # Packaging
 
+[tasks.man]
+description = "Generate the gd(1) manual page"
+command = "cargo"
+args = [
+  "run",
+  "--quiet",
+  "--locked",
+  "--example",
+  "generate-man",
+  "--",
+  "target/man/gd.1",
+]
+
 [tasks.package]
 description = "Verify the crate package using the lockfile"
 command = "cargo"
