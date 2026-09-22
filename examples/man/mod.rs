@@ -10,6 +10,8 @@ mod content;
 mod tests;
 
 const TERSE_ARGUMENTS: &[&str] = &["completions/shell"];
+const RICH_SUBCOMMANDS: &[&str] = &["completions"];
+const TERSE_SUBCOMMANDS: &[&str] = &[];
 
 const MAN_HELP: &[(&str, &str)] = &[
     (
@@ -146,6 +148,7 @@ fn render_system_sections(output: &mut Vec<u8>) -> io::Result<()> {
 fn documented_command() -> Result<Command, String> {
     let command = Cli::command_for("gd");
     validate_argument_docs(&command)?;
+    validate_subcommand_docs(&command, RICH_SUBCOMMANDS, TERSE_SUBCOMMANDS)?;
     Ok(augment_command(command, ""))
 }
 
@@ -205,6 +208,46 @@ fn collect_argument_paths(command: &Command, prefix: &str, paths: &mut BTreeSet<
     for subcommand in command.get_subcommands().filter(|item| !item.is_hide_set()) {
         let path = argument_path(prefix, subcommand.get_name());
         collect_argument_paths(subcommand, &path, paths);
+    }
+}
+
+fn validate_subcommand_docs(
+    command: &Command,
+    rich_docs: &[&str],
+    terse_docs: &[&str],
+) -> Result<(), String> {
+    let mut subcommands = BTreeSet::new();
+    collect_subcommand_paths(command, "", &mut subcommands);
+    let rich = rich_docs.iter().copied().collect::<BTreeSet<_>>();
+    let terse = terse_docs.iter().copied().collect::<BTreeSet<_>>();
+
+    if let Some(path) = subcommands
+        .iter()
+        .find(|path| !rich.contains(path.as_str()) && !terse.contains(path.as_str()))
+    {
+        return Err(format!("undocumented man-page subcommand: {path}"));
+    }
+    if let Some(path) = rich
+        .union(&terse)
+        .find(|path| !subcommands.contains(**path))
+    {
+        return Err(format!(
+            "man-page documentation refers to missing subcommand: {path}"
+        ));
+    }
+    if let Some(path) = rich.intersection(&terse).next() {
+        return Err(format!(
+            "subcommand has both rich and terse man-page documentation: {path}"
+        ));
+    }
+    Ok(())
+}
+
+fn collect_subcommand_paths(command: &Command, prefix: &str, paths: &mut BTreeSet<String>) {
+    for subcommand in command.get_subcommands().filter(|item| !item.is_hide_set()) {
+        let path = argument_path(prefix, subcommand.get_name());
+        paths.insert(path.clone());
+        collect_subcommand_paths(subcommand, &path, paths);
     }
 }
 

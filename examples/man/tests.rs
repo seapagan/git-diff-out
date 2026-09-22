@@ -2,7 +2,10 @@ use std::fs;
 
 use clap::{Arg, Command};
 
-use super::{generate, render_manual, validate_argument_docs};
+use super::{
+    RICH_SUBCOMMANDS, TERSE_SUBCOMMANDS, generate, render_manual, validate_argument_docs,
+    validate_subcommand_docs,
+};
 
 const SECTIONS: &[&str] = &[
     "NAME",
@@ -103,11 +106,92 @@ fn generation_creates_the_parent_and_exact_page() {
 }
 
 #[test]
+fn manual_qualifies_when_configuration_errors_apply() {
+    let roff = String::from_utf8(render_manual().unwrap()).unwrap();
+
+    assert_contains_all(
+        &roff,
+        &[
+            "when an invocation needs configuration",
+            "unreadable files, invalid TOML, and unknown keys cause an error",
+            "With \\-\\-no\\-header and stdout as the only destination",
+            "skips configuration unless branch mode needs it to select a base",
+        ],
+    );
+}
+
+#[test]
+fn manual_describes_the_selected_file_directory() {
+    let roff = String::from_utf8(render_manual().unwrap()).unwrap();
+
+    assert_contains_all(
+        &roff,
+        &[
+            "The default directory is the current directory",
+            "configured output_dir or \\-\\-output\\-dir selects another",
+            "save unstaged.diff under the selected output directory",
+        ],
+    );
+}
+
+#[test]
+fn manual_describes_automatic_branch_base_selection_in_order() {
+    let roff = String::from_utf8(render_manual().unwrap()).unwrap();
+    let expected = [
+        "current branch\\*(Aqs upstream remote when that remote exists",
+        "origin when present",
+        "the sole configured remote",
+        "matching local branch when it exists",
+        "remote\\-tracking ref",
+        "local main, then local master",
+        "reports an error when none of these choices yields a base",
+    ];
+    let mut previous = 0;
+
+    for text in expected {
+        let position = roff.find(text).unwrap_or_else(|| panic!("missing {text}"));
+        assert!(position >= previous, "out of order: {text}");
+        previous = position;
+    }
+}
+
+#[test]
 fn undocumented_public_argument_is_rejected() {
     let command = Command::new("gd").arg(Arg::new("future").long("future"));
     assert_eq!(
         validate_argument_docs(&command).unwrap_err(),
         "undocumented man-page argument: future"
+    );
+}
+
+#[test]
+fn undocumented_public_subcommand_is_rejected() {
+    let command = Command::new("gd")
+        .subcommand(Command::new("completions"))
+        .subcommand(Command::new("future"));
+
+    assert_eq!(
+        validate_subcommand_docs(&command, RICH_SUBCOMMANDS, TERSE_SUBCOMMANDS).unwrap_err(),
+        "undocumented man-page subcommand: future"
+    );
+}
+
+#[test]
+fn missing_documented_subcommand_is_rejected() {
+    assert_eq!(
+        validate_subcommand_docs(&Command::new("gd"), RICH_SUBCOMMANDS, TERSE_SUBCOMMANDS,)
+            .unwrap_err(),
+        "man-page documentation refers to missing subcommand: completions"
+    );
+}
+
+#[test]
+fn conflicting_subcommand_classifications_are_rejected() {
+    let command = Command::new("gd").subcommand(Command::new("completions"));
+
+    assert_eq!(
+        validate_subcommand_docs(&command, &["completions"], &["completions"]).unwrap_err(),
+        "subcommand has both rich and terse man-page documentation: completions"
     );
 }
 

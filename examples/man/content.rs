@@ -73,7 +73,7 @@ pub(super) fn render_diff_specifications(output: &mut Vec<u8>) -> io::Result<()>
     definition(
         &mut roff,
         vec![bold("b, branch "), italic("[BASE]")],
-        "Run git diff --no-color BASE...HEAD. An explicit BASE takes precedence over the configured base_branch. Without either, gd uses the current branch's remote default when available, then a local main or master branch.",
+        "Run git diff --no-color BASE...HEAD. An explicit BASE takes precedence over the configured base_branch. Without either, gd selects the current branch's upstream remote when that remote exists. If the upstream remote is absent, gd selects origin when present, or the sole configured remote. gd examines the selected remote's HEAD and uses the matching local branch when it exists. If that local branch does not exist, gd uses the remote-tracking ref. If no remote default yields a base, gd tries local main, then local master. gd reports an error when none of these choices yields a base.",
     );
     definition(
         &mut roff,
@@ -91,7 +91,7 @@ pub(super) fn render_output(output: &mut Vec<u8>) -> io::Result<()> {
     let mut roff = section("OUTPUT");
     paragraph(
         &mut roff,
-        "With a terminal on standard output, gd writes a mode-specific file in the current directory. With non-terminal stdout, including a pipe, redirection, or capture, gd writes the payload to stdout and omits the implicit file. --stdout forces stdout in a terminal. --output-dir selects a file directory and remains active beside automatic non-terminal stdout.",
+        "With a terminal on standard output, gd writes a mode-specific file. The default directory is the current directory; configured output_dir or --output-dir selects another. With non-terminal stdout, including a pipe, redirection, or capture, gd writes the payload to stdout and omits the implicit file. --stdout forces stdout in a terminal. --output-dir remains active beside automatic non-terminal stdout.",
     );
     paragraph(
         &mut roff,
@@ -143,7 +143,7 @@ pub(super) fn render_configuration(output: &mut Vec<u8>) -> io::Result<()> {
     let mut roff = section("CONFIGURATION");
     paragraph(
         &mut roff,
-        "gd reads TOML from the platform configuration path. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error.",
+        "gd reads TOML from the platform configuration path when an invocation needs configuration. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error. With --no-header and stdout as the only destination, gd skips configuration unless branch mode needs it to select a base.",
     );
     definition(
         &mut roff,
@@ -223,7 +223,7 @@ pub(super) fn render_examples(output: &mut Vec<u8>) -> io::Result<()> {
     example(
         &mut roff,
         "gd -p -C",
-        "In a terminal, send one rendered payload to stdout, the clipboard, and unstaged.diff.",
+        "In a terminal, send one rendered payload to stdout and the clipboard, then save unstaged.diff under the selected output directory.",
     );
     example(
         &mut roff,
