@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     man::generate(&arguments.output)
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use std::{ffi::OsString, fs, os::unix::ffi::OsStringExt};
 
