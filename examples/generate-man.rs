@@ -1,15 +1,42 @@
-use std::{env, error::Error, io, path::Path};
+use std::{error::Error, path::PathBuf};
+
+use clap::Parser;
 
 mod man;
 
+#[derive(Parser)]
+struct Arguments {
+    #[arg(value_name = "OUTPUT")]
+    output: PathBuf,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    let output = env::args_os()
-        .nth(1)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "usage: generate-man OUTPUT"))?;
-    if env::args_os().nth(2).is_some() {
-        return Err(
-            io::Error::new(io::ErrorKind::InvalidInput, "usage: generate-man OUTPUT").into(),
-        );
+    let arguments = Arguments::parse();
+    man::generate(&arguments.output)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{ffi::OsString, fs, os::unix::ffi::OsStringExt};
+
+    use clap::Parser;
+
+    use super::{Arguments, man};
+
+    #[test]
+    fn non_utf8_output_path_is_preserved() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory
+            .path()
+            .join(OsString::from_vec(b"gd-\x80.1".to_vec()));
+        let arguments = Arguments::try_parse_from([
+            OsString::from("generate-man"),
+            path.clone().into_os_string(),
+        ])
+        .unwrap();
+
+        man::generate(&arguments.output).unwrap();
+
+        assert_eq!(fs::read(path).unwrap(), man::render_manual().unwrap());
     }
-    man::generate(Path::new(&output))
 }
