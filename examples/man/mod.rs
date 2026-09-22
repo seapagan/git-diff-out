@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, error::Error, fs, io, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fs, io,
+    path::Path,
+};
 
 use clap::{ArgAction, Command};
 use clap_mangen::Man;
@@ -10,7 +15,16 @@ mod content;
 mod tests;
 
 const TERSE_ARGUMENTS: &[&str] = &["completions/shell"];
-const RICH_SUBCOMMANDS: &[&str] = &["completions"];
+
+struct RichSubcommandDoc {
+    path: &'static str,
+    render: fn(&Command, &str, &mut clap_mangen::roff::Roff),
+}
+
+const RICH_SUBCOMMANDS: &[RichSubcommandDoc] = &[RichSubcommandDoc {
+    path: "completions",
+    render: content::render_completions,
+}];
 const TERSE_SUBCOMMANDS: &[&str] = &[];
 
 const MAN_HELP: &[(&str, &str)] = &[
@@ -213,23 +227,26 @@ fn collect_argument_paths(command: &Command, prefix: &str, paths: &mut BTreeSet<
 
 fn validate_subcommand_docs(
     command: &Command,
-    rich_docs: &[&str],
+    rich_docs: &[RichSubcommandDoc],
     terse_docs: &[&str],
 ) -> Result<(), String> {
-    let mut subcommands = BTreeSet::new();
-    collect_subcommand_paths(command, "", &mut subcommands);
-    let rich = rich_docs.iter().copied().collect::<BTreeSet<_>>();
+    let mut subcommands = BTreeMap::new();
+    collect_subcommands(command, "", &mut subcommands);
+    let rich = rich_docs
+        .iter()
+        .map(|doc| doc.path)
+        .collect::<BTreeSet<_>>();
     let terse = terse_docs.iter().copied().collect::<BTreeSet<_>>();
 
     if let Some(path) = subcommands
-        .iter()
+        .keys()
         .find(|path| !rich.contains(path.as_str()) && !terse.contains(path.as_str()))
     {
         return Err(format!("undocumented man-page subcommand: {path}"));
     }
     if let Some(path) = rich
         .union(&terse)
-        .find(|path| !subcommands.contains(**path))
+        .find(|path| !subcommands.contains_key(**path))
     {
         return Err(format!(
             "man-page documentation refers to missing subcommand: {path}"
@@ -240,14 +257,27 @@ fn validate_subcommand_docs(
             "subcommand has both rich and terse man-page documentation: {path}"
         ));
     }
+    if let Some(path) = terse.iter().find(|path| {
+        subcommands
+            .get(**path)
+            .is_some_and(|subcommand| subcommand.get_about().is_none())
+    }) {
+        return Err(format!(
+            "terse man-page subcommand has no short help: {path}"
+        ));
+    }
     Ok(())
 }
 
-fn collect_subcommand_paths(command: &Command, prefix: &str, paths: &mut BTreeSet<String>) {
+fn collect_subcommands<'a>(
+    command: &'a Command,
+    prefix: &str,
+    subcommands: &mut BTreeMap<String, &'a Command>,
+) {
     for subcommand in command.get_subcommands().filter(|item| !item.is_hide_set()) {
         let path = argument_path(prefix, subcommand.get_name());
-        paths.insert(path.clone());
-        collect_subcommand_paths(subcommand, &path, paths);
+        subcommands.insert(path.clone(), subcommand);
+        collect_subcommands(subcommand, &path, subcommands);
     }
 }
 

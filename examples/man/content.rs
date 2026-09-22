@@ -109,10 +109,54 @@ pub(super) fn render_output(output: &mut Vec<u8>) -> io::Result<()> {
 }
 
 pub(super) fn render_subcommands(command: &Command, output: &mut Vec<u8>) -> io::Result<()> {
-    let subcommand = command
-        .get_subcommands()
-        .find(|item| item.get_name() == "completions")
-        .expect("live command defines completions");
+    render_subcommands_with_docs(
+        command,
+        super::RICH_SUBCOMMANDS,
+        super::TERSE_SUBCOMMANDS,
+        output,
+    )
+}
+
+pub(super) fn render_subcommands_with_docs(
+    command: &Command,
+    rich_docs: &[super::RichSubcommandDoc],
+    terse_docs: &[&str],
+    output: &mut Vec<u8>,
+) -> io::Result<()> {
+    let mut roff = section("SUBCOMMANDS");
+    render_subcommand_entries(command, "", rich_docs, terse_docs, &mut roff);
+    roff.to_writer(output)
+}
+
+fn render_subcommand_entries(
+    command: &Command,
+    prefix: &str,
+    rich_docs: &[super::RichSubcommandDoc],
+    terse_docs: &[&str],
+    roff: &mut Roff,
+) {
+    for subcommand in command.get_subcommands().filter(|item| !item.is_hide_set()) {
+        let path = super::argument_path(prefix, subcommand.get_name());
+        let display_path = path.replace('/', " ");
+        if let Some(doc) = rich_docs.iter().find(|doc| doc.path == path) {
+            (doc.render)(subcommand, &display_path, roff);
+        } else if terse_docs.contains(&path.as_str()) {
+            render_terse_subcommand(subcommand, &display_path, roff);
+        } else {
+            unreachable!("validated subcommand lacks documentation: {path}");
+        }
+        render_subcommand_entries(subcommand, &path, rich_docs, terse_docs, roff);
+    }
+}
+
+fn render_terse_subcommand(subcommand: &Command, display_path: &str, roff: &mut Roff) {
+    let about = subcommand
+        .get_about()
+        .expect("validated terse subcommand defines short help");
+    definition(roff, vec![bold(display_path)], about.to_string());
+}
+
+pub(super) fn render_completions(subcommand: &Command, display_path: &str, roff: &mut Roff) {
     let shell = subcommand
         .get_arguments()
         .find(|argument| argument.get_id() == "shell")
@@ -128,15 +172,13 @@ pub(super) fn render_subcommands(command: &Command, output: &mut Vec<u8>) -> io:
         .map(|value| value.get_name().to_owned())
         .collect::<Vec<_>>()
         .join(", ");
-    let mut roff = section("SUBCOMMANDS");
     definition(
-        &mut roff,
-        vec![bold(subcommand.get_name()), roman(" "), italic(value_name)],
+        roff,
+        vec![bold(display_path), roman(" "), italic(value_name)],
         format!(
             "Write a completion script to stdout. Supported values: {values}. Source or install the result using the selected shell's conventions."
         ),
     );
-    roff.to_writer(output)
 }
 
 pub(super) fn render_configuration(output: &mut Vec<u8>) -> io::Result<()> {

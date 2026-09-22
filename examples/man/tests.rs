@@ -190,8 +190,25 @@ fn conflicting_subcommand_classifications_are_rejected() {
     let command = Command::new("gd").subcommand(Command::new("completions"));
 
     assert_eq!(
-        validate_subcommand_docs(&command, &["completions"], &["completions"]).unwrap_err(),
+        validate_subcommand_docs(&command, RICH_SUBCOMMANDS, &["completions"]).unwrap_err(),
         "subcommand has both rich and terse man-page documentation: completions"
+    );
+}
+
+#[test]
+fn classified_terse_subcommand_is_rendered_from_live_metadata() {
+    let command =
+        Command::new("gd").subcommand(Command::new("future").about("Inspect future state"));
+    let terse = &["future"];
+    validate_subcommand_docs(&command, &[], terse).unwrap();
+    let mut output = Vec::new();
+
+    super::content::render_subcommands_with_docs(&command, &[], terse, &mut output).unwrap();
+
+    let roff = String::from_utf8(output).unwrap();
+    assert_contains_all(
+        &roff,
+        &[".SH SUBCOMMANDS", "\\fBfuture\\fR", "Inspect future state"],
     );
 }
 
