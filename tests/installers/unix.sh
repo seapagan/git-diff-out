@@ -6,7 +6,7 @@ trap 'rm -rf "$root"' 0
 trap 'exit 1' 1 2 3 15
 
 mkdir -p "$root/bin" "$root/wget-bin" "$root/archive"
-for command in cat chmod cp grep gzip head install mkdir mktemp rm sed tar; do
+for command in cat chmod cp grep gzip head install mkdir mktemp mv rm sed tar; do
     path=$(command -v "$command")
     ln -s "$path" "$root/bin/$command"
     ln -s "$path" "$root/wget-bin/$command"
@@ -191,9 +191,22 @@ mkdir -p "$GD_INSTALL_DIR"
 printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
 printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
 TEST_ARCHIVE=$root/missing-man.tar.gz
-if run_install; then fail 'archive without gd.1 succeeded'; fi
-grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'missing man page replaced gd'
-grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'missing man page replaced git-diff-out'
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'legacy archive did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'legacy archive did not replace git-diff-out'
+test ! -e "$root/missing/share/man/man1/gd.1" || fail 'legacy archive installed a man page'
+grep -q 'archive does not contain gd.1' "$root/output" || fail 'legacy archive man-page skip was not reported'
+
+reset_install_env
+GD_INSTALL_DIR="$root/man-conflict/bin"
+GD_MAN_DIR="$root/man-conflict/man1"
+mkdir -p "$GD_INSTALL_DIR" "$GD_MAN_DIR/gd.1"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+TEST_ARCHIVE=$root/release.tar.gz
+if run_install; then fail 'gd.1 directory conflict succeeded'; fi
+grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'gd.1 conflict replaced gd'
+grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'gd.1 conflict replaced git-diff-out'
 
 reset_install_env
 GD_INSTALL_DIR="$root/blocked-install/bin"

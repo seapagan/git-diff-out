@@ -34,7 +34,14 @@ normalize_dir() {
 main() {
     target=$(detect_target)
     tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' 0
+    staged_man=
+    cleanup() {
+        if [ -n "$staged_man" ]; then
+            rm -f "$staged_man"
+        fi
+        rm -rf "$tmp_dir"
+    }
+    trap 'cleanup' 0
     trap 'exit 1' 1 2 3 15
 
     version=${GD_VERSION:-}
@@ -68,19 +75,25 @@ main() {
         return 1
     fi
     if [ -n "$man_dir" ] && [ ! -f "$tmp_dir/gd.1" ]; then
-        printf 'error: release archive is missing gd.1\n' >&2
-        return 1
+        printf 'Skipped man page installation: release archive does not contain gd.1.\n'
+        man_dir=
     fi
 
+    mkdir -p "$install_dir"
     if [ -n "$man_dir" ]; then
-        mkdir -p "$install_dir" "$man_dir"
-    else
-        mkdir -p "$install_dir"
+        mkdir -p "$man_dir"
+        if [ -d "$man_dir/gd.1" ]; then
+            printf 'error: man page destination is a directory: %s\n' "$man_dir/gd.1" >&2
+            return 1
+        fi
+        staged_man=$(mktemp "$man_dir/.gd.1.XXXXXX")
+        install -m 644 "$tmp_dir/gd.1" "$staged_man"
     fi
     install -m 755 "$tmp_dir/gd" "$tmp_dir/git-diff-out" "$install_dir/"
     printf 'Installed git-diff-out %s to %s (gd, git-diff-out).\n' "$version" "$install_dir"
     if [ -n "$man_dir" ]; then
-        install -m 644 "$tmp_dir/gd.1" "$man_dir/gd.1"
+        mv -f "$staged_man" "$man_dir/gd.1"
+        staged_man=
         printf 'Installed gd.1 to %s.\n' "$man_dir"
     fi
     case ":${PATH:-}:" in
