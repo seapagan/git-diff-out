@@ -84,6 +84,16 @@ jobs:
         shell: bash
         run: cargo build --release --locked --target "$BINARY_TARGET"
 
+      - name: Install Cargo Make
+        if: matrix.runner != 'windows-latest'
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-make@0.37.24
+
+      - name: Generate man page
+        if: matrix.runner != 'windows-latest'
+        run: cargo make man
+
       - name: Package Unix archive
         if: matrix.runner != 'windows-latest'
         shell: bash
@@ -92,8 +102,9 @@ jobs:
           archive_root="$(mktemp -d "${RUNNER_TEMP:?}/git-diff-out-release.XXXXXX")"
           cp "target/$BINARY_TARGET/release/gd" "$archive_root/gd"
           cp "target/$BINARY_TARGET/release/git-diff-out" "$archive_root/git-diff-out"
+          cp target/man/gd.1 "$archive_root/gd.1"
           cp LICENSE README.md "$archive_root/"
-          tar -czf "$ARCHIVE_NAME" -C "$archive_root" gd git-diff-out LICENSE README.md
+          tar -czf "$ARCHIVE_NAME" -C "$archive_root" gd git-diff-out gd.1 LICENSE README.md
           test -s "$ARCHIVE_NAME"
 
       - name: Package Windows archive

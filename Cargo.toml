@@ -27,5 +27,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 tempfile = "3.27.0"
 toml = "1.1.6"
 
+[dev-dependencies]
+clap_mangen = "=0.3.3"
+
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "=5.4.1", features = ["std"] }

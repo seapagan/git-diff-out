@@ -39,6 +39,16 @@ use `$XDG_BIN_HOME` when set, otherwise `~/.local/bin`; Windows uses
 `PATH`; they warn if the directory is not already on it, leaving PATH setup to
 you.
 
+On Linux and macOS, binary installation is authoritative; installing `gd.1` is
+optional and best-effort. A binary directory of `<prefix>/bin` maps to
+`<prefix>/share/man/man1`, or `GD_MAN_DIR` selects another `man1` directory.
+`GD_SKIP_MAN=1` skips man-page installation and takes precedence over
+`GD_MAN_DIR`; only the literal value `1` is supported, not alternatives such as
+`true` or `yes`. A man-page failure emits a warning without failing an otherwise
+successful binary installation. For other binary-directory layouts, the
+installer reports that it skipped the man page instead of guessing a
+destination.
+
 ### cargo-binstall
 
 ```bash
@@ -46,7 +56,7 @@ cargo binstall git-diff-out
 ```
 
 cargo-binstall prefers the prebuilt release binaries, avoiding a local build on
-supported platforms. It installs both executable names:
+supported platforms. It installs both executable names but not `gd.1`:
 
 ```text
 gd
@@ -60,7 +70,7 @@ cargo install git-diff-out
 ```
 
 This builds from source and requires Rust 1.85.0 or newer. It installs both
-package binaries:
+package binaries but not `gd.1`:
 
 ```text
 gd
@@ -78,8 +88,8 @@ provides archives for:
 - macOS Apple Silicon aarch64
 
 Each archive contains both executable names for its platform, plus `LICENSE`
-and `README.md`. Extract the archive and place the executable or executables
-you want in a directory on your `PATH`.
+and `README.md`. Linux and macOS archives also contain `gd.1`; Windows archives
+do not. Extract the archive and place each file in the appropriate directory.
 
 ### Build from source
 
@@ -97,6 +107,9 @@ target/release/git-diff-out
 ```
 
 Windows adds the `.exe` suffix to both paths.
+
+Installation methods do not install shell completions. Generate them with
+`gd completions <shell>`.
 
 ## Usage
 
