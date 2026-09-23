@@ -43,7 +43,8 @@ On Linux and macOS, binary installation is authoritative; installing `gd.1` is
 optional and best-effort. A binary directory of `<prefix>/bin` maps to
 `<prefix>/share/man/man1`, or `GD_MAN_DIR` selects another `man1` directory.
 `GD_SKIP_MAN=1` skips man-page installation and takes precedence over
-`GD_MAN_DIR`. A man-page failure emits a warning without failing an otherwise
+`GD_MAN_DIR`; only the literal value `1` is supported, not alternatives such as
+`true` or `yes`. A man-page failure emits a warning without failing an otherwise
 successful binary installation. For other binary-directory layouts, the
 installer reports that it skipped the man page instead of guessing a
 destination.
