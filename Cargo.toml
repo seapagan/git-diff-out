@@ -1,13 +1,13 @@
 [package]
 name = "git-diff-out"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85.0"
 description = "Export common Git diffs to predictable diff files or stdout"
 readme = "README.md"
-license = "MIT"
 repository = "https://github.com/seapagan/git-diff-out"
-keywords = ["git", "diff", "cli", "developer-tools", "code-review"]
+license = "MIT"
+keywords = ["cli", "code-review", "developer-tools", "diff", "git"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
@@ -30,5 +30,5 @@ toml = "1.1.6"
 [dev-dependencies]
 clap_mangen = "=0.3.3"
 
-[target.'cfg(windows)'.dependencies]
+[target."cfg(windows)".dependencies]
 clipboard-win = { version = "=5.4.1", features = ["std"] }

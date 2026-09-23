@@ -5,15 +5,11 @@ project since the first release, with the latest changes at the top.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/seapagan/git-diff-out/tree/HEAD)
-
-These are the changes that have been merged to the repository since the last
-release.
-
-Everything in this section will be included in the next official release.
+## [0.2.0](https://github.com/seapagan/git-diff-out/releases/tag/0.2.0) (September 23, 2026)
 
 ### New Features
 
+- Feat: add shell completion generation ([#7](https://github.com/seapagan/git-diff-out/pull/7)) by [seapagan](https://github.com/seapagan)
 - Chore: add advisory complexity tooling ([#5](https://github.com/seapagan/git-diff-out/pull/5)) by [seapagan](https://github.com/seapagan)
 - Feat: add optional annotated diff headers ([#4](https://github.com/seapagan/git-diff-out/pull/4)) by [seapagan](https://github.com/seapagan)
 - Feat: add cross-platform clipboard output ([#3](https://github.com/seapagan/git-diff-out/pull/3)) by [seapagan](https://github.com/seapagan)
@@ -24,12 +20,14 @@ Everything in this section will be included in the next official release.
 
 - Fix: reject directories outside Git working trees ([#6](https://github.com/seapagan/git-diff-out/pull/6)) by [seapagan](https://github.com/seapagan)
 
-[`Full Changelog`](https://github.com/seapagan/git-diff-out/compare/0.1.0...HEAD) | [`Diff`](https://github.com/seapagan/git-diff-out/compare/0.1.0...HEAD.diff) | [`Patch`](https://github.com/seapagan/git-diff-out/compare/0.1.0...HEAD.patch)
+### Documentation
+
+- Feat: ship Unix man page ([#8](https://github.com/seapagan/git-diff-out/pull/8)) by [seapagan](https://github.com/seapagan)
+
+[`Full Changelog`](https://github.com/seapagan/git-diff-out/compare/0.1.0...0.2.0) | [`Diff`](https://github.com/seapagan/git-diff-out/compare/0.1.0...0.2.0.diff) | [`Patch`](https://github.com/seapagan/git-diff-out/compare/0.1.0...0.2.0.patch)
 
 ## [0.1.0](https://github.com/seapagan/git-diff-out/releases/tag/0.1.0) (September 14, 2026)
 
 First public release of `git-diff-out`
-
 ---
-
 *This changelog was generated using [github-changelog-md](http://changelog.seapagan.net/) by [Seapagan](https://github.com/seapagan)*
