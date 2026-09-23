@@ -62,7 +62,7 @@ main() {
         man_dir=$(normalize_dir "$GD_MAN_DIR")
     else
         case "$install_dir" in
-            */bin) man_dir=${install_dir%/bin}/share/man/man1 ;;
+            ?*/bin) man_dir=${install_dir%/bin}/share/man/man1 ;;
             *) printf 'Skipped man page installation: set GD_MAN_DIR for binary directory %s.\n' "$install_dir" ;;
         esac
     fi

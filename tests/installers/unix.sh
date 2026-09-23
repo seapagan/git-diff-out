@@ -6,11 +6,42 @@ trap 'rm -rf "$root"' 0
 trap 'exit 1' 1 2 3 15
 
 mkdir -p "$root/bin" "$root/wget-bin" "$root/archive"
-for command in cat chmod cp grep gzip head install mkdir mktemp mv rm sed tar; do
+for command in cat chmod cp grep gzip head mktemp mv rm sed tar; do
     path=$(command -v "$command")
     ln -s "$path" "$root/bin/$command"
     ln -s "$path" "$root/wget-bin/$command"
 done
+
+TEST_REAL_INSTALL=$(command -v install)
+TEST_REAL_MKDIR=$(command -v mkdir)
+export TEST_REAL_INSTALL TEST_REAL_MKDIR
+ln -s "$TEST_REAL_INSTALL" "$root/wget-bin/install"
+ln -s "$TEST_REAL_MKDIR" "$root/wget-bin/mkdir"
+
+cat > "$root/bin/install" <<'EOF'
+#!/bin/sh
+destination=
+for argument do destination=$argument; done
+if [ "$destination" = /bin/ ]; then
+    printf 'suppressed install to /bin\n' >> "$TEST_LOG"
+    exit 0
+fi
+exec "$TEST_REAL_INSTALL" "$@"
+EOF
+cat > "$root/bin/mkdir" <<'EOF'
+#!/bin/sh
+for argument do
+    case "$argument" in
+        /bin|/bin/) exit 0 ;;
+        /share/man/man1)
+            printf 'refused mkdir /share/man/man1\n' >> "$TEST_LOG"
+            exit 1
+            ;;
+    esac
+done
+exec "$TEST_REAL_MKDIR" "$@"
+EOF
+chmod +x "$root/bin/install" "$root/bin/mkdir"
 
 cat > "$root/bin/uname" <<'EOF'
 #!/bin/sh
@@ -170,6 +201,25 @@ GD_INSTALL_DIR="$root/arbitrary"
 run_install
 test -x "$root/arbitrary/gd" || fail 'arbitrary directory did not receive gd'
 grep -q 'Skipped man page' "$root/output" || fail 'arbitrary directory skip was not reported'
+
+reset_install_env
+GD_INSTALL_DIR=/bin
+run_install
+grep -q 'set GD_MAN_DIR for binary directory /bin' "$root/output" || fail '/bin skip was not reported'
+! grep -q 'refused mkdir /share/man/man1' "$TEST_LOG" || fail '/bin derived /share/man/man1'
+
+reset_install_env
+GD_INSTALL_DIR=/bin
+GD_MAN_DIR="$root/bin-man/man1"
+run_install
+test -f "$GD_MAN_DIR/gd.1" || fail 'GD_MAN_DIR did not override /bin skip'
+
+reset_install_env
+GD_INSTALL_DIR=/bin
+GD_MAN_DIR="$root/skipped-bin-man/man1"
+GD_SKIP_MAN=1
+run_install
+test ! -e "$GD_MAN_DIR/gd.1" || fail 'GD_SKIP_MAN did not take precedence for /bin'
 
 reset_install_env
 GD_INSTALL_DIR="$root/explicit/bin"
