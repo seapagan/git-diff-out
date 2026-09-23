@@ -39,15 +39,22 @@ use `$XDG_BIN_HOME` when set, otherwise `~/.local/bin`; Windows uses
 `PATH`; they warn if the directory is not already on it, leaving PATH setup to
 you.
 
-On Linux and macOS, binary installation is authoritative; installing `gd.1` is
-optional and best-effort. A binary directory of `<prefix>/bin` maps to
-`<prefix>/share/man/man1`, or `GD_MAN_DIR` selects another `man1` directory.
-`GD_SKIP_MAN=1` skips man-page installation and takes precedence over
-`GD_MAN_DIR`; only the literal value `1` is supported, not alternatives such as
-`true` or `yes`. A man-page failure emits a warning without failing an otherwise
-successful binary installation. For other binary-directory layouts, the
-installer reports that it skipped the man page instead of guessing a
-destination.
+On Linux and macOS, the installer also installs a man page when it can determine
+a standard location. If the binaries are installed in `<prefix>/bin`, the man
+page is installed in `<prefix>/share/man/man1`. Set `GD_MAN_DIR` to choose a
+different man-page directory, or set `GD_SKIP_MAN=1` to skip man-page
+installation entirely. `GD_SKIP_MAN=1` takes precedence over `GD_MAN_DIR`; only
+the literal value `1` is supported.
+
+Man-page installation is best-effort. If it cannot be installed, the binaries
+are still installed and the installer prints a warning. For non-standard binary
+locations, the installer skips the man page unless `GD_MAN_DIR` is set.
+
+The man page can be read by typing the below on Linux or macOS:
+
+```sh
+man gd
+```
 
 ### cargo-binstall
 
@@ -56,7 +63,7 @@ cargo binstall git-diff-out
 ```
 
 cargo-binstall prefers the prebuilt release binaries, avoiding a local build on
-supported platforms. It installs both executable names but not `gd.1`:
+supported platforms. It installs both executable names but not the `man` page:
 
 ```text
 gd
@@ -70,7 +77,7 @@ cargo install git-diff-out
 ```
 
 This builds from source and requires Rust 1.85.0 or newer. It installs both
-package binaries but not `gd.1`:
+package binaries but not the `man` page:
 
 ```text
 gd
@@ -87,9 +94,10 @@ provides archives for:
 - macOS Intel x86_64
 - macOS Apple Silicon aarch64
 
-Each archive contains both executable names for its platform, plus `LICENSE`
-and `README.md`. Linux and macOS archives also contain `gd.1`; Windows archives
-do not. Extract the archive and place each file in the appropriate directory.
+Each archive contains both executable names for its platform, plus `LICENSE` and
+`README.md`. Linux and macOS archives also contain `gd.1`, the project `man`
+page; Windows archives do not. Extract the archive and place each file in the
+appropriate directory.
 
 ### Build from source
 
@@ -117,25 +125,25 @@ Diff commands must run inside a checked-out Git repository; bare repositories
 are not supported. Linked worktrees created with `git worktree` are supported.
 The `completions` command works from any directory.
 
-| Command                | Meaning                                              | Output                           |
-| ---------------------- | ---------------------------------------------------- | -------------------------------- |
-| `gd`                   | Unstaged tracked changes                             | `unstaged.diff`                  |
-| `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`                  |
-| `gd s` / `gd staged`   | Staged tracked changes                               | `staged.diff`                    |
-| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.diff`               |
-| `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch.diff`                    |
-| `gd b develop`         | Current-branch changes relative to `develop`         | `branch.diff`                    |
-| `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`               |
-| `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`            |
-| `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output                  |
-| `gd -c`                | Copy unstaged tracked changes                         | Clipboard                        |
-| `gd -C`                | Copy and save unstaged changes (interactive TTY)      | Clipboard and `unstaged.diff`    |
-| `gd -H`                | Add an annotation header                              | Selected destination(s)          |
-| `gd -N`                | Suppress a configured annotation header               | Selected destination(s)          |
-| `gd --note "Review"`  | Add a header with a note                              | Selected destination(s)          |
-| `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output                  |
-| `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`     |
-| `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`                  |
+| Command                | Meaning                                              | Output                        |
+| ---------------------- | ---------------------------------------------------- | ----------------------------- |
+| `gd`                   | Unstaged tracked changes                             | `unstaged.diff`               |
+| `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`               |
+| `gd s` / `gd staged`   | Staged tracked changes                               | `staged.diff`                 |
+| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.diff`            |
+| `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch.diff`                 |
+| `gd b develop`         | Current-branch changes relative to `develop`         | `branch.diff`                 |
+| `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`            |
+| `gd 3`                 | Changes introduced by the last three commits         | `last-3-commits.diff`         |
+| `gd s --stdout`        | Staged tracked changes written to stdout             | Standard output               |
+| `gd -c`                | Copy unstaged tracked changes                        | Clipboard                     |
+| `gd -C`                | Copy and save unstaged changes (interactive TTY)     | Clipboard and `unstaged.diff` |
+| `gd -H`                | Add an annotation header                             | Selected destination(s)       |
+| `gd -N`                | Suppress a configured annotation header              | Selected destination(s)       |
+| `gd --note "Review"`   | Add a header with a note                             | Selected destination(s)       |
+| `gd 3 \| grep TODO`    | Last three commits filtered for `TODO`               | Standard output               |
+| `gd -o review-diffs`   | Unstaged tracked changes with an output override     | `review-diffs/unstaged.diff`  |
+| `gd --quiet`           | Unstaged tracked changes without a success message   | `unstaged.diff`               |
 
 When stdout is piped, redirected, or captured, `gd` sends the rendered payload
 to stdout automatically and suppresses its implicit `.diff` file. An explicit
