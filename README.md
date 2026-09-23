@@ -39,14 +39,14 @@ use `$XDG_BIN_HOME` when set, otherwise `~/.local/bin`; Windows uses
 `PATH`; they warn if the directory is not already on it, leaving PATH setup to
 you.
 
-On Linux and macOS, the installer also installs `gd.1`. A binary directory of
-`<prefix>/bin` maps to `<prefix>/share/man/man1` on a best-effort basis; failure
-to use that inferred directory does not block binary installation. Set
-`GD_MAN_DIR` to choose another `man1` directory; failures there are fatal. Use
-`GD_SKIP_MAN=1` to install binaries only. Only the value `1` is supported
-(`true` and `yes` are not alternatives), and it takes precedence over
-`GD_MAN_DIR`. For other binary-directory layouts, the installer reports that it
-skipped the man page instead of guessing a destination.
+On Linux and macOS, binary installation is authoritative; installing `gd.1` is
+optional and best-effort. A binary directory of `<prefix>/bin` maps to
+`<prefix>/share/man/man1`, or `GD_MAN_DIR` selects another `man1` directory.
+`GD_SKIP_MAN=1` skips man-page installation and takes precedence over
+`GD_MAN_DIR`. A man-page failure emits a warning without failing an otherwise
+successful binary installation. For other binary-directory layouts, the
+installer reports that it skipped the man page instead of guessing a
+destination.
 
 ### cargo-binstall
 

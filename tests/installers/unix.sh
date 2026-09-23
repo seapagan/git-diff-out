@@ -6,7 +6,7 @@ trap 'rm -rf "$root"' 0
 trap 'exit 1' 1 2 3 15
 
 mkdir -p "$root/bin" "$root/wget-bin" "$root/archive"
-for command in cat chmod cp grep gzip head mktemp mv rm sed tar; do
+for command in cat chmod cp grep gzip head ls mktemp sed tar; do
     path=$(command -v "$command")
     ln -s "$path" "$root/bin/$command"
     ln -s "$path" "$root/wget-bin/$command"
@@ -14,9 +14,13 @@ done
 
 TEST_REAL_INSTALL=$(command -v install)
 TEST_REAL_MKDIR=$(command -v mkdir)
-export TEST_REAL_INSTALL TEST_REAL_MKDIR
+TEST_REAL_MV=$(command -v mv)
+TEST_REAL_RM=$(command -v rm)
+export TEST_REAL_INSTALL TEST_REAL_MKDIR TEST_REAL_MV TEST_REAL_RM
 ln -s "$TEST_REAL_INSTALL" "$root/wget-bin/install"
 ln -s "$TEST_REAL_MKDIR" "$root/wget-bin/mkdir"
+ln -s "$TEST_REAL_MV" "$root/wget-bin/mv"
+ln -s "$TEST_REAL_RM" "$root/wget-bin/rm"
 
 cat > "$root/bin/install" <<'EOF'
 #!/bin/sh
@@ -28,6 +32,10 @@ if [ "$destination" = /bin/ ]; then
 fi
 if [ "${TEST_FAIL_MAN_INSTALL:-}" = 1 ] && [ "${2:-}" = 644 ]; then
     printf 'refused man page install\n' >> "$TEST_LOG"
+    exit 1
+fi
+if [ "${TEST_FAIL_BINARY_INSTALL:-}" = 1 ] && [ "${2:-}" = 755 ]; then
+    printf 'refused binary install\n' >> "$TEST_LOG"
     exit 1
 fi
 exec "$TEST_REAL_INSTALL" "$@"
@@ -45,7 +53,35 @@ for argument do
 done
 exec "$TEST_REAL_MKDIR" "$@"
 EOF
-chmod +x "$root/bin/install" "$root/bin/mkdir"
+cat > "$root/bin/mv" <<'EOF'
+#!/bin/sh
+source=${1:-}
+if [ "$source" = -f ]; then source=${2:-}; fi
+case "$source" in
+    */.gd.1.*)
+        if [ "${TEST_FAIL_MAN_MOVE:-}" = 1 ]; then
+            printf 'refused man page replacement\n' >> "$TEST_LOG"
+            exit 1
+        fi
+        ;;
+esac
+exec "$TEST_REAL_MV" "$@"
+EOF
+cat > "$root/bin/rm" <<'EOF'
+#!/bin/sh
+for argument do
+    case "$argument" in
+        */.gd.1.*)
+            if [ "${TEST_FAIL_MAN_REMOVE:-}" = 1 ]; then
+                printf 'refused man page cleanup\n' >> "$TEST_LOG"
+                exit 1
+            fi
+            ;;
+    esac
+done
+exec "$TEST_REAL_RM" "$@"
+EOF
+chmod +x "$root/bin/install" "$root/bin/mkdir" "$root/bin/mv" "$root/bin/rm"
 
 cat > "$root/bin/uname" <<'EOF'
 #!/bin/sh
@@ -108,10 +144,15 @@ reset_install_env() {
     GD_INSTALL_DIR=
     GD_MAN_DIR=
     GD_SKIP_MAN=
+    TEST_FAIL_BINARY_INSTALL=
     TEST_FAIL_MAN_INSTALL=
+    TEST_FAIL_MAN_MOVE=
+    TEST_FAIL_MAN_REMOVE=
     XDG_BIN_HOME=
     HOME="$root/home"
-    export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN TEST_FAIL_MAN_INSTALL XDG_BIN_HOME HOME
+    export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN TEST_FAIL_BINARY_INSTALL
+    export TEST_FAIL_MAN_INSTALL TEST_FAIL_MAN_MOVE TEST_FAIL_MAN_REMOVE
+    export XDG_BIN_HOME HOME
 }
 
 inherited_man_dir="$root/inherited-man/man1"
@@ -194,7 +235,10 @@ reset_install_env
 GD_INSTALL_DIR="$root/prefix/bin"
 run_install
 test -f "$root/prefix/share/man/man1/gd.1" || fail 'conventional man page was not installed'
-test ! -x "$root/prefix/share/man/man1/gd.1" || fail 'man page is executable'
+case $(ls -l "$root/prefix/share/man/man1/gd.1") in
+    -rw-r--r--*) ;;
+    *) fail 'man page mode is not 0644' ;;
+esac
 
 reset_install_env
 GD_INSTALL_DIR="$root/trailing/bin/"
@@ -210,15 +254,18 @@ printf 'not a directory\n' > "$root/derived-blocked/share"
 run_install
 grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'derived man failure did not replace gd'
 grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'derived man failure did not replace git-diff-out'
-grep -q 'warning: could not install gd.1 to inferred man directory' "$root/output" || fail 'derived man failure warning missing'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'derived man failure warning missing'
 
 reset_install_env
 GD_INSTALL_DIR="$root/derived-stage/bin"
 TEST_FAIL_MAN_INSTALL=1
 mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
 run_install
-test -x "$GD_INSTALL_DIR/gd" || fail 'derived man staging failure did not install gd'
-grep -q 'warning: could not install gd.1 to inferred man directory' "$root/output" || fail 'derived man staging warning missing'
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'man staging failure did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man staging failure did not replace git-diff-out'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'man staging warning missing'
 for staged in "$root/derived-stage/share/man/man1"/.gd.1.*; do
     test ! -e "$staged" || fail 'derived man staging file was not removed'
 done
@@ -281,9 +328,13 @@ mkdir -p "$GD_INSTALL_DIR" "$GD_MAN_DIR/gd.1"
 printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
 printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
 TEST_ARCHIVE=$root/release.tar.gz
-if run_install; then fail 'gd.1 directory conflict succeeded'; fi
-grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'gd.1 conflict replaced gd'
-grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'gd.1 conflict replaced git-diff-out'
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'gd.1 conflict did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'gd.1 conflict did not replace git-diff-out'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'gd.1 conflict warning missing'
+for staged in "$GD_MAN_DIR"/.gd.1.*; do
+    test ! -e "$staged" || fail 'gd.1 conflict left a staging file'
+done
 
 reset_install_env
 GD_INSTALL_DIR="$root/blocked-install/bin"
@@ -293,9 +344,52 @@ printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
 printf 'not a directory\n' > "$root/man-blocker"
 GD_MAN_DIR="$root/man-blocker/man1"
 TEST_ARCHIVE=$root/release.tar.gz
-if run_install; then fail 'blocked man directory succeeded'; fi
-grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'man directory failure replaced gd'
-grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man directory failure replaced git-diff-out'
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'man directory failure did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man directory failure did not replace git-diff-out'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'man directory warning missing'
+
+reset_install_env
+GD_INSTALL_DIR="$root/move-failure/bin"
+GD_MAN_DIR="$root/move-failure/man1"
+TEST_FAIL_MAN_MOVE=1
+mkdir -p "$GD_INSTALL_DIR" "$GD_MAN_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+printf 'old manual\n' > "$GD_MAN_DIR/gd.1"
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'man replacement failure did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man replacement failure did not replace git-diff-out'
+grep -q '^old manual$' "$GD_MAN_DIR/gd.1" || fail 'man replacement failure changed gd.1'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'man replacement warning missing'
+for staged in "$GD_MAN_DIR"/.gd.1.*; do
+    test ! -e "$staged" || fail 'man replacement failure left a staging file'
+done
+
+reset_install_env
+GD_INSTALL_DIR="$root/cleanup-failure/bin"
+GD_MAN_DIR="$root/cleanup-failure/man1"
+TEST_FAIL_MAN_INSTALL=1
+TEST_FAIL_MAN_REMOVE=1
+mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'man cleanup failure did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'man cleanup failure did not replace git-diff-out'
+grep -q 'warning: could not install gd.1' "$root/output" || fail 'man cleanup failure warning missing'
+grep -q 'refused man page cleanup' "$TEST_LOG" || fail 'man cleanup failure was not exercised'
+
+reset_install_env
+GD_INSTALL_DIR="$root/binary-failure/bin"
+TEST_FAIL_BINARY_INSTALL=1
+mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+if run_install; then fail 'binary installation failure succeeded'; fi
+grep -q '^old gd$' "$GD_INSTALL_DIR/gd" || fail 'binary failure changed gd'
+grep -q '^old git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'binary failure changed git-diff-out'
+test ! -e "$root/binary-failure/share/man/man1/gd.1" || fail 'binary failure installed gd.1'
 
 reset_install_env
 TEST_OS='' TEST_ARCH='' GD_VERSION=0.1.0

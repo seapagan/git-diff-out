@@ -37,9 +37,9 @@ main() {
     staged_man=
     cleanup() {
         if [ -n "$staged_man" ]; then
-            rm -f "$staged_man"
+            rm -f "$staged_man" || :
         fi
-        rm -rf "$tmp_dir"
+        rm -rf "$tmp_dir" || :
     }
     trap 'cleanup' 0
     trap 'exit 1' 1 2 3 15
@@ -56,12 +56,10 @@ main() {
 
     install_dir=$(normalize_dir "${GD_INSTALL_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}")
     man_dir=
-    man_dir_explicit=0
     if [ "${GD_SKIP_MAN:-}" = 1 ]; then
         printf 'Skipped man page installation because GD_SKIP_MAN=1.\n'
     elif [ -n "${GD_MAN_DIR:-}" ]; then
         man_dir=$(normalize_dir "$GD_MAN_DIR")
-        man_dir_explicit=1
     else
         case "$install_dir" in
             ?*/bin) man_dir=${install_dir%/bin}/share/man/man1 ;;
@@ -76,40 +74,28 @@ main() {
         printf 'error: release archive is missing gd or git-diff-out\n' >&2
         return 1
     fi
-    if [ -n "$man_dir" ] && [ ! -f "$tmp_dir/gd.1" ]; then
-        printf 'Skipped man page installation: release archive does not contain gd.1.\n'
-        man_dir=
-    fi
-
     mkdir -p "$install_dir"
-    if [ -n "$man_dir" ]; then
-        if [ "$man_dir_explicit" = 1 ]; then
-            mkdir -p "$man_dir"
-            if [ -d "$man_dir/gd.1" ]; then
-                printf 'error: man page destination is a directory: %s\n' "$man_dir/gd.1" >&2
-                return 1
-            fi
-            staged_man=$(mktemp "$man_dir/.gd.1.XXXXXX")
-            install -m 644 "$tmp_dir/gd.1" "$staged_man"
-        elif ! mkdir -p "$man_dir" ||
-            [ -d "$man_dir/gd.1" ] ||
-            ! staged_man=$(mktemp "$man_dir/.gd.1.XXXXXX") ||
-            ! install -m 644 "$tmp_dir/gd.1" "$staged_man"
-        then
-            if [ -n "$staged_man" ]; then
-                rm -f "$staged_man"
-                staged_man=
-            fi
-            printf 'warning: could not install gd.1 to inferred man directory %s; continuing with binary installation.\n' "$man_dir" >&2
-            man_dir=
-        fi
-    fi
     install -m 755 "$tmp_dir/gd" "$tmp_dir/git-diff-out" "$install_dir/"
     printf 'Installed git-diff-out %s to %s (gd, git-diff-out).\n' "$version" "$install_dir"
     if [ -n "$man_dir" ]; then
-        mv -f "$staged_man" "$man_dir/gd.1"
-        staged_man=
-        printf 'Installed gd.1 to %s.\n' "$man_dir"
+        if [ ! -f "$tmp_dir/gd.1" ]; then
+            printf 'Skipped man page installation: release archive does not contain gd.1.\n'
+        elif mkdir -p "$man_dir" &&
+            [ ! -d "$man_dir/gd.1" ] &&
+            staged_man=$(mktemp "$man_dir/.gd.1.XXXXXX") &&
+            install -m 644 "$tmp_dir/gd.1" "$staged_man" &&
+            mv -f "$staged_man" "$man_dir/gd.1"
+        then
+            staged_man=
+            printf 'Installed gd.1 to %s.\n' "$man_dir"
+        else
+            if [ -n "$staged_man" ]; then
+                if rm -f "$staged_man"; then
+                    staged_man=
+                fi
+            fi
+            printf 'warning: could not install gd.1 to %s; binaries remain installed.\n' "$man_dir" >&2
+        fi
     fi
     case ":${PATH:-}:" in
         *":$install_dir:"*) ;;
