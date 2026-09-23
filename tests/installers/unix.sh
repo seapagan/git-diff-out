@@ -26,6 +26,10 @@ if [ "$destination" = /bin/ ]; then
     printf 'suppressed install to /bin\n' >> "$TEST_LOG"
     exit 0
 fi
+if [ "${TEST_FAIL_MAN_INSTALL:-}" = 1 ] && [ "${2:-}" = 644 ]; then
+    printf 'refused man page install\n' >> "$TEST_LOG"
+    exit 1
+fi
 exec "$TEST_REAL_INSTALL" "$@"
 EOF
 cat > "$root/bin/mkdir" <<'EOF'
@@ -104,9 +108,10 @@ reset_install_env() {
     GD_INSTALL_DIR=
     GD_MAN_DIR=
     GD_SKIP_MAN=
+    TEST_FAIL_MAN_INSTALL=
     XDG_BIN_HOME=
     HOME="$root/home"
-    export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN XDG_BIN_HOME HOME
+    export GD_INSTALL_DIR GD_MAN_DIR GD_SKIP_MAN TEST_FAIL_MAN_INSTALL XDG_BIN_HOME HOME
 }
 
 inherited_man_dir="$root/inherited-man/man1"
@@ -195,6 +200,28 @@ reset_install_env
 GD_INSTALL_DIR="$root/trailing/bin/"
 run_install
 test -f "$root/trailing/share/man/man1/gd.1" || fail 'trailing slash changed man directory derivation'
+
+reset_install_env
+GD_INSTALL_DIR="$root/derived-blocked/bin"
+mkdir -p "$GD_INSTALL_DIR"
+printf 'old gd\n' > "$GD_INSTALL_DIR/gd"
+printf 'old git-diff-out\n' > "$GD_INSTALL_DIR/git-diff-out"
+printf 'not a directory\n' > "$root/derived-blocked/share"
+run_install
+grep -q '^new gd$' "$GD_INSTALL_DIR/gd" || fail 'derived man failure did not replace gd'
+grep -q '^new git-diff-out$' "$GD_INSTALL_DIR/git-diff-out" || fail 'derived man failure did not replace git-diff-out'
+grep -q 'warning: could not install gd.1 to inferred man directory' "$root/output" || fail 'derived man failure warning missing'
+
+reset_install_env
+GD_INSTALL_DIR="$root/derived-stage/bin"
+TEST_FAIL_MAN_INSTALL=1
+mkdir -p "$GD_INSTALL_DIR"
+run_install
+test -x "$GD_INSTALL_DIR/gd" || fail 'derived man staging failure did not install gd'
+grep -q 'warning: could not install gd.1 to inferred man directory' "$root/output" || fail 'derived man staging warning missing'
+for staged in "$root/derived-stage/share/man/man1"/.gd.1.*; do
+    test ! -e "$staged" || fail 'derived man staging file was not removed'
+done
 
 reset_install_env
 GD_INSTALL_DIR="$root/arbitrary"
