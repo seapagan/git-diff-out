@@ -24,6 +24,15 @@ if [ "$1" = rev-parse ] && [ "$2" = --is-inside-work-tree ]; then
   esac
 fi
 
+if [ "$1" = symbolic-ref ] && [ "$2" = --quiet ] && [ "$3" = HEAD ]; then
+  case "${0##*/}" in
+    hash-fails|empty-tree-empty|empty-tree-non-utf8)
+      printf 'refs/heads/main\n'
+      exit 0
+      ;;
+  esac
+fi
+
 case "${0##*/}" in
   wl-copy|xclip|xsel|pbcopy)
     if [ -n "${GD_TEST_CLIPBOARD_FAIL:-}" ]; then

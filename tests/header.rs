@@ -224,7 +224,7 @@ fn header_uses_exact_contents_text_for_every_mode() {
         ),
         (
             &["all", "--header"][..],
-            "Git diff of all tracked changes",
+            "Git diff of all uncommitted changes (including untracked files)",
             &["diff", "--no-color", "HEAD"][..],
         ),
         (

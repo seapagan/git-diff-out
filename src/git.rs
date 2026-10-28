@@ -33,15 +33,7 @@ pub fn resolved_diff_args(
         return Ok(args);
     }
 
-    let head_exists = Command::new(git_program)
-        .args(["rev-parse", "--verify", "--quiet", "HEAD"])
-        .current_dir(cwd)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| format!("failed to start git: {error}"))?
-        .success();
-    if head_exists {
+    if head_exists(cwd, git_program)? {
         return Ok(args);
     }
 
@@ -65,6 +57,36 @@ pub fn resolved_diff_args(
     }
     *args.last_mut().expect("all mode has a revision argument") = empty_tree.into();
     Ok(args)
+}
+
+fn head_exists(cwd: &Path, git_program: &OsStr) -> Result<bool, String> {
+    let output = Command::new(git_program)
+        .args(["rev-parse", "--verify", "--quiet", "HEAD"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if output.status.success() {
+        return Ok(true);
+    }
+    if output.status.code() != Some(1) {
+        return Err(format!(
+            "cannot resolve HEAD: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    // A missing branch is unborn; an invalid or detached HEAD is a failure.
+    let symbolic = Command::new(git_program)
+        .args(["symbolic-ref", "--quiet", "HEAD"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    if !symbolic.status.success() {
+        return Err(format!(
+            "cannot resolve HEAD: {}",
+            String::from_utf8_lossy(&symbolic.stderr).trim()
+        ));
+    }
+    Ok(false)
 }
 
 pub fn choose_remote(upstream_remote: Option<&str>, remotes: &[String]) -> Option<String> {

@@ -3,6 +3,7 @@ pub mod cli;
 mod clipboard;
 pub mod config;
 pub mod git;
+mod untracked;
 
 use std::error::Error;
 use std::io::{self, Write};

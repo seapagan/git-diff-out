@@ -2,7 +2,7 @@
 
 `git-diff-out` (`gd`) is a small command-line tool for exporting common Git
 diffs in a predictable form. Short commands cover unstaged changes, staged
-changes, all uncommitted tracked changes, branch diffs, and recent commit
+changes, all uncommitted changes, branch diffs, and recent commit
 diffs. Send the result to a named `.diff` file, stdout, or the clipboard.
 
 This makes it easier to hand diffs to reviewers, LLMs, scripts, pipelines, and
@@ -130,7 +130,9 @@ The `completions` command works from any directory.
 | `gd`                   | Unstaged tracked changes                             | `unstaged.diff`               |
 | `gd u` / `gd unstaged` | Unstaged tracked changes                             | `unstaged.diff`               |
 | `gd s` / `gd staged`   | Staged tracked changes                               | `staged.diff`                 |
-| `gd a` / `gd all`      | All uncommitted tracked changes                      | `uncommitted.diff`            |
+| `gd a` / `gd all`      | All staged, unstaged, and untracked changes           | `uncommitted.diff`            |
+| `gd all -t`           | Exclude untracked files                              | `uncommitted.diff`            |
+| `gd all -U`           | Include untracked files, overriding configuration    | `uncommitted.diff`            |
 | `gd b` / `gd branch`   | Current-branch changes relative to the detected base | `branch.diff`                 |
 | `gd b develop`         | Current-branch changes relative to `develop`         | `branch.diff`                 |
 | `gd 1`                 | Changes introduced by the last commit                | `last-commit.diff`            |
@@ -278,8 +280,16 @@ for Wayland or `xclip`/`xsel` for X11 if no provider is found. macOS uses
 retain clipboard ownership after `gd` exits where the platform requires it.
 
 `gd a`/`gd all` compares against `HEAD` in a normal repository and against
-Git's empty tree before the first commit. Genuinely untracked files are still
-excluded.
+Git's empty tree before the first commit, including when no files have been
+staged. It includes untracked files by default and respects normal Git ignore
+rules, including repository, info/exclude, and global exclusions.
+
+Use `gd all -t` / `--tracked-only` to exclude untracked files, or `gd all -U` /
+`--include-untracked` to include them explicitly. These conflicting switches
+require `all` or `a`; other modes retain their existing behaviour.
+
+Untracked files may contain sensitive information or unexpectedly large content.
+Inspect diffs before sharing them externally.
 
 `gd` delegates diff semantics to the installed `git` executable.
 
@@ -316,6 +326,9 @@ output_dir = "."
 quiet = false
 base_branch = "develop"
 
+[all]
+include_untracked = true
+
 [clipboard]
 osc52_fallback = false
 
@@ -333,6 +346,11 @@ output for that invocation. Relative output directories are resolved from the
 current working directory. CLI `--quiet` or `--verbose` overrides configured
 `quiet`; `--verbose` only restores normal success messages.
 
+`all.include_untracked` defaults to `true`, even when the section or key is
+absent. Set it to `false` for tracked-only `all` output. CLI `--tracked-only`/`-t`
+or `--include-untracked`/`-U` overrides configuration, which overrides the built-in
+default. This setting affects only `all` mode.
+
 `clipboard.osc52_fallback` is disabled by default. When enabled, a local session
 uses OSC 52 if its normal OS clipboard backend is unavailable or fails at runtime.
 SSH sessions always use OSC 52 regardless of this setting.
@@ -343,10 +361,15 @@ that setting. A configured `header.note` appears only when the header is enabled
 
 ## Output safety
 
-File output is streamed into a temporary file in the destination directory. A
+File output uses a temporary file in the destination directory. A
 successful non-empty diff atomically replaces the named diff. A successful
 empty diff removes a stale destination. A failed Git command leaves any
 existing destination unchanged.
+
+When including untracked files, `all` excludes its own `uncommitted.diff` in the
+selected output directory and an active file receiving redirected stdout.
+Tracked files with those names still appear. Other untracked `.diff` files remain
+eligible. The real Git index and staging state are preserved.
 
 ## Development checks
 

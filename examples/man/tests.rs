@@ -40,6 +40,8 @@ fn generated_manual_is_deterministic_and_structured() {
         &[
             "\\-p",
             "\\-\\-stdout",
+            "\\-\\-tracked\\-only",
+            "\\-\\-include\\-untracked",
             "\\-c",
             "\\-\\-copy",
             "\\-C",
@@ -115,7 +117,7 @@ fn manual_qualifies_when_configuration_errors_apply() {
             "when an invocation needs configuration",
             "unreadable files, invalid TOML, and unknown keys cause an error",
             "With \\-\\-no\\-header and stdout as the only destination",
-            "skips configuration unless branch mode needs it to select a base",
+            "skips configuration unless all mode needs its untracked setting or branch mode needs it to select a base",
         ],
     );
 }

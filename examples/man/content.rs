@@ -68,7 +68,7 @@ pub(super) fn render_diff_specifications(output: &mut Vec<u8>) -> io::Result<()>
     definition(
         &mut roff,
         vec![bold("a, all")],
-        "Run git diff --no-color HEAD for all tracked changes in the work tree and index. Before the first commit, gd compares against Git's empty tree object.",
+        "Include staged, unstaged, and untracked changes relative to HEAD. Before the first commit, compare against Git's empty tree, even if nothing has been staged. --tracked-only (-t) excludes untracked files; --include-untracked (-U) explicitly includes them. Both switches require all or a mode and conflict with each other.",
     );
     definition(
         &mut roff,
@@ -82,7 +82,7 @@ pub(super) fn render_diff_specifications(output: &mut Vec<u8>) -> io::Result<()>
     );
     paragraph(
         &mut roff,
-        "These specifications exclude untracked files. Add files to the index before using staged or all mode when the diff must include them.",
+        "Only all mode includes untracked files. Normal Git ignore rules apply, including .gitignore, .git/info/exclude, and global exclusions. Untracked files may contain sensitive information or unexpectedly large content; inspect diffs before sharing them externally.",
     );
     roff.to_writer(output)
 }
@@ -104,6 +104,10 @@ pub(super) fn render_output(output: &mut Vec<u8>) -> io::Result<()> {
     paragraph(
         &mut roff,
         "An empty diff leaves stdout empty, does not change the clipboard, and removes a stale mode-specific file when file output is active. File output uses a temporary file in the destination directory and replaces the final path only after Git succeeds. When several destinations are active, gd attempts each one and reports their combined failures.",
+    );
+    paragraph(
+        &mut roff,
+        "When including untracked files, all mode omits its own untracked uncommitted.diff in the selected output directory and the active redirected stdout file. Other untracked .diff files remain eligible. Tracked files with output names remain visible. The real index and staging state are preserved.",
     );
     roff.to_writer(output)
 }
@@ -185,7 +189,7 @@ pub(super) fn render_configuration(output: &mut Vec<u8>) -> io::Result<()> {
     let mut roff = section("CONFIGURATION");
     paragraph(
         &mut roff,
-        "gd reads TOML from the platform configuration path when an invocation needs configuration. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error. With --no-header and stdout as the only destination, gd skips configuration unless branch mode needs it to select a base.",
+        "gd reads TOML from the platform configuration path when an invocation needs configuration. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error. With --no-header and stdout as the only destination, gd skips configuration unless all mode needs its untracked setting or branch mode needs it to select a base.",
     );
     definition(
         &mut roff,
@@ -201,6 +205,11 @@ pub(super) fn render_configuration(output: &mut Vec<u8>) -> io::Result<()> {
         &mut roff,
         vec![bold("base_branch = "), italic("STRING")],
         "Set the branch-mode base. The default is unset. A command-line BASE overrides this value; automatic detection runs only when both are absent.",
+    );
+    definition(
+        &mut roff,
+        vec![bold("all.include_untracked = "), italic("BOOLEAN")],
+        "Include untracked files in all mode. The default is true, including when [all] or its key is absent. --tracked-only (-t) and --include-untracked (-U) override configuration, which overrides the built-in default. Other modes are unaffected.",
     );
     definition(
         &mut roff,
@@ -247,6 +256,21 @@ pub(super) fn render_environment(output: &mut Vec<u8>) -> io::Result<()> {
 
 pub(super) fn render_examples(output: &mut Vec<u8>) -> io::Result<()> {
     let mut roff = section("EXAMPLES");
+    example(
+        &mut roff,
+        "gd all",
+        "Export all uncommitted changes, including non-ignored untracked files before the first commit.",
+    );
+    example(
+        &mut roff,
+        "gd all -t",
+        "Export tracked changes only, overriding all.include_untracked.",
+    );
+    example(
+        &mut roff,
+        "gd all -U",
+        "Include untracked files even when configuration disables them.",
+    );
     example(
         &mut roff,
         "gd s | less",

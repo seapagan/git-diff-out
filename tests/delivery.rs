@@ -151,7 +151,7 @@ fn multiple_untracked_files_are_reported_for_all_mode() {
     repo.write("nested/two.txt", "two\n");
     repo.write("three.txt", "three\n");
 
-    let messages = repo.gd_in(&["all"]).unwrap();
+    let messages = repo.gd_in(&["all", "--tracked-only"]).unwrap();
     assert_eq!(
         messages,
         b"No uncommitted tracked changes (3 untracked files not included).\n"
