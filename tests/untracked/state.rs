@@ -110,23 +110,30 @@ fn binary_and_literal_pathspec_filenames_match_native_git() {
 
 #[cfg(unix)]
 #[test]
-fn symlinks_and_non_utf8_filenames_are_preserved() {
-    use std::{
-        ffi::OsString,
-        os::unix::{ffi::OsStringExt, fs::symlink},
-    };
+fn untracked_symlinks_are_preserved() {
+    use std::os::unix::fs::symlink;
+    let repo = Repo::new("main");
+    symlink("target", repo.path().join("link")).unwrap();
+    let output = repo.gd(&["all"]);
+    assert_success(&output);
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("120000") && text.contains("+target"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn non_utf8_untracked_filenames_are_preserved() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
     let repo = Repo::new("main");
     fs::write(
         repo.path().join(OsString::from_vec(b"name-\xff".to_vec())),
         b"content\n",
     )
     .unwrap();
-    symlink("target", repo.path().join("link")).unwrap();
     let output = repo.gd(&["all"]);
     assert_success(&output);
     let text = String::from_utf8_lossy(&output.stdout);
-    assert!(text.contains("120000") && text.contains("+target"));
-    assert!(text.contains("name-\\377"));
+    assert!(text.contains("name-\\377") && text.contains("+content"));
 }
 
 #[test]

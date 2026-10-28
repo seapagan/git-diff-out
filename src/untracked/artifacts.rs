@@ -8,7 +8,7 @@ pub(super) struct Artifacts {
     #[cfg(unix)]
     stdout: Option<fs::Metadata>,
     #[cfg(windows)]
-    stdout: Option<PathBuf>,
+    stdout: Option<same_file::Handle>,
 }
 
 impl Artifacts {
@@ -44,7 +44,7 @@ impl Artifacts {
     fn is_stdout(&self, path: &Path) -> bool {
         self.stdout.as_ref().is_some_and(|stdout| {
             fs::symlink_metadata(path).is_ok_and(|file| file.is_file())
-                && fs::canonicalize(path).ok().as_ref() == Some(stdout)
+                && same_file::Handle::from_path(path).is_ok_and(|file| &file == stdout)
         })
     }
 }
@@ -66,33 +66,6 @@ fn stdout_file() -> Option<fs::Metadata> {
 }
 
 #[cfg(windows)]
-fn stdout_file() -> Option<PathBuf> {
-    use std::{
-        ffi::c_void,
-        io,
-        os::windows::{ffi::OsStringExt, io::AsRawHandle},
-    };
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetFinalPathNameByHandleW(
-            handle: *mut c_void,
-            path: *mut u16,
-            length: u32,
-            flags: u32,
-        ) -> u32;
-    }
-    let mut buffer = vec![0_u16; 32768];
-    // The handle is borrowed from stdout; the buffer is writable for its stated length.
-    let length = unsafe {
-        GetFinalPathNameByHandleW(
-            io::stdout().as_raw_handle(),
-            buffer.as_mut_ptr(),
-            buffer.len() as u32,
-            0,
-        )
-    } as usize;
-    if length == 0 || length >= buffer.len() {
-        return None;
-    }
-    Some(std::ffi::OsString::from_wide(&buffer[..length]).into())
+fn stdout_file() -> Option<same_file::Handle> {
+    same_file::Handle::stdout().ok()
 }

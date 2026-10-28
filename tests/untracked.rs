@@ -51,11 +51,7 @@ fn overrides_are_exclusive_and_require_explicit_all_mode() {
 fn saved_output_is_repeatable_and_keeps_legitimate_diff_files() {
     let repo = Repo::new("main");
     repo.write("source", "source\n");
-    repo.git([
-        "config",
-        "core.excludesFile",
-        common::null_device().to_str().unwrap(),
-    ]);
+    use_empty_excludes(&repo);
     repo.write("legitimate.diff", "review this\n");
     repo.gd_in(&["all"]).unwrap();
     let expected = patch(&repo, "uncommitted.diff");
@@ -94,4 +90,16 @@ fn tracked_output_name_remains_visible_after_staged_deletion_and_recreation() {
     let output = repo.gd(&["all", "-p"]);
     assert_success(&output);
     assert!(String::from_utf8_lossy(&output.stdout).contains("+new content"));
+}
+
+fn use_empty_excludes(repo: &Repo) {
+    use std::ffi::OsStr;
+    let path = repo.path().join(".git/empty-excludes");
+    assert!(path.is_absolute());
+    fs::write(&path, "").unwrap();
+    repo.git([
+        OsStr::new("config"),
+        OsStr::new("core.excludesFile"),
+        path.as_os_str(),
+    ]);
 }

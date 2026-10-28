@@ -4,11 +4,7 @@ use std::{fs, process::Stdio};
 #[test]
 fn custom_output_combined_with_redirected_stdout_is_repeatable() {
     let repo = Repo::new("main");
-    repo.git([
-        "config",
-        "core.excludesFile",
-        super::common::null_device().to_str().unwrap(),
-    ]);
+    super::use_empty_excludes(&repo);
     repo.write("source", "new content\n");
     repo.write("review patches/legitimate.diff", "include me\n");
     for _ in 0..2 {
@@ -108,7 +104,7 @@ fn git_failures_preserve_real_index_previous_output_and_clean_temporary_index() 
     use std::os::unix::fs::PermissionsExt;
     for operation in ["ls-files", "add", "diff", "read-tree"] {
         let repo = Repo::new("main");
-        repo.git(["config", "core.excludesFile", "/dev/null"]);
+        super::use_empty_excludes(&repo);
         repo.write("new", "content\n");
         if operation != "read-tree" {
             repo.git(["add", "new"]);
@@ -158,7 +154,7 @@ exec git "$@"
 fn dangling_output_symlink_is_excluded_without_hiding_its_target() {
     use std::os::unix::fs::symlink;
     let repo = Repo::new("main");
-    repo.git(["config", "core.excludesFile", "/dev/null"]);
+    super::use_empty_excludes(&repo);
     repo.write("source", "content\n");
     symlink("missing-target", repo.path().join("uncommitted.diff")).unwrap();
     let output = repo.gd(&["all"]);
@@ -266,14 +262,27 @@ exec "$GD_TEST_REAL_GIT" "$@"
 #[test]
 fn empty_all_saved_removes_stale_output_without_counting_it() {
     let repo = Repo::new("main");
-    repo.git([
-        "config",
-        "core.excludesFile",
-        super::common::null_device().to_str().unwrap(),
-    ]);
+    super::use_empty_excludes(&repo);
     repo.write("uncommitted.diff", "stale output\n");
     let messages = repo.gd_in(&["all"]).unwrap();
     assert_eq!(messages, b"No uncommitted changes.\n");
     assert!(!repo.path().join("uncommitted.diff").exists());
     assert!(!repo.path().join(".git/index").exists());
+}
+
+#[test]
+fn redirected_stdout_excludes_untracked_hard_links_to_its_destination() {
+    let repo = Repo::new("main");
+    repo.write("source", "source\n");
+    let expected = repo.gd(&["all", "-p"]);
+    assert_success(&expected);
+    let destination = repo.path().join("redirect.patch");
+    fs::write(&destination, "previous output\n").unwrap();
+    fs::hard_link(&destination, repo.path().join("output-hard-link")).unwrap();
+    let output = gd_command(repo.path(), &["all", "-p"])
+        .stdout(Stdio::from(fs::File::create(&destination).unwrap()))
+        .output()
+        .unwrap();
+    assert_success(&output);
+    assert_eq!(fs::read(destination).unwrap(), expected.stdout);
 }
