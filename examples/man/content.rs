@@ -259,7 +259,7 @@ pub(super) fn render_examples(output: &mut Vec<u8>) -> io::Result<()> {
     example(
         &mut roff,
         "gd all",
-        "Export all uncommitted changes, including non-ignored untracked files before the first commit.",
+        "Export all uncommitted changes, including non-ignored untracked files.",
     );
     example(
         &mut roff,

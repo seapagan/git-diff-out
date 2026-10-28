@@ -55,11 +55,21 @@ fn saved_output_is_repeatable_and_keeps_legitimate_diff_files() {
     repo.write("source", "source\n");
     use_empty_excludes(&repo);
     repo.write("legitimate.diff", "review this\n");
-    repo.gd_in(&["all"]).unwrap();
+    let saved = gd_command(repo.path(), &["all", "-o", "."])
+        .output()
+        .unwrap();
+    assert_success(&saved);
     let expected = patch(&repo, "uncommitted.diff");
-    assert!(String::from_utf8_lossy(&expected).contains("legitimate.diff"));
+    let text = String::from_utf8_lossy(&expected);
+    assert!(text.contains("b/legitimate.diff") && text.contains("+review this"));
+    assert!(!text.contains("b/uncommitted.diff"));
+    assert_eq!(saved.stdout, expected);
     for _ in 0..2 {
-        repo.gd_in(&["all"]).unwrap();
+        let saved = gd_command(repo.path(), &["all", "-o", "."])
+            .output()
+            .unwrap();
+        assert_success(&saved);
+        assert_eq!(saved.stdout, expected);
         assert_eq!(patch(&repo, "uncommitted.diff"), expected);
     }
     let stdout = repo.gd(&["all", "-p"]);

@@ -143,7 +143,7 @@ fn one_untracked_file_is_reported_but_remains_outside_the_diff() {
 }
 
 #[test]
-fn multiple_untracked_files_are_reported_for_all_mode() {
+fn multiple_untracked_files_are_reported_for_tracked_only_all_mode() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
