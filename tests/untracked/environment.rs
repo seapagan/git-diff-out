@@ -19,7 +19,7 @@ fn sparse_checkout_includes_outside_cone_without_changing_index_or_configuration
     repo.write("inside/tracked", "after\n");
     repo.write("outside/new", "out of cone\n");
     repo.write("outside/hidden.ignored", "ignored\n");
-    let preserved = ["index", "config", "info/sparse-checkout"];
+    let preserved = ["index", "config", "config.worktree", "info/sparse-checkout"];
     let before = preserved.map(|name| fs::read(repo.path().join(".git").join(name)).unwrap());
     let output = repo.gd(&["all", "-p"]);
     assert_success(&output);

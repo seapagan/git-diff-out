@@ -224,6 +224,9 @@ fn untracked_stdout_streams_before_git_finishes() {
     fs::write(
         &wrapper,
         r#"#!/bin/sh
+if [ "$1" = -c ] && [ "$2" = index.sparse=false ]; then
+    shift 2
+fi
 if [ "$1" = diff ]; then
     printf 'diff prefix\n'
     while [ ! -f .git/release-diff ]; do sleep 0.01; done

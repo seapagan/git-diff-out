@@ -39,10 +39,12 @@ pub(crate) fn command(
         .map_err(|error| format!("cannot create temporary Git index directory: {error}"))?;
     let index = temporary.path().join("index");
     prepare_index(git, cwd, &index, &paths)?;
+    // Keep the temporary index full to avoid Git 2.55 sparse-index expansion crashes.
     let mut command = Command::new(git);
     command
         .current_dir(cwd)
         .env("GIT_INDEX_FILE", &index)
+        .args(["-c", "index.sparse=false"])
         .args(args);
     Ok((temporary, command))
 }
@@ -157,6 +159,8 @@ fn add_intent(git: &OsStr, cwd: &Path, index: &Path, paths: &[u8]) -> Result<(),
         .args([
             "-c",
             "core.splitIndex=false",
+            "-c",
+            "index.sparse=false",
             "add",
             "--intent-to-add",
             "--sparse",
