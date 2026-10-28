@@ -5,12 +5,7 @@ project since the first release, with the latest changes at the top.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/seapagan/git-diff-out/tree/HEAD)
-
-These are the changes that have been merged to the repository since the last
-release.
-
-Everything in this section will be included in the next official release.
+## [0.3.0](https://github.com/seapagan/git-diff-out/releases/tag/0.3.0) (October 28, 2026)
 
 ### New Features
 
@@ -20,7 +15,7 @@ Everything in this section will be included in the next official release.
 
 - Test: isolate complexity fixture from Git signing config ([#9](https://github.com/seapagan/git-diff-out/pull/9)) by [seapagan](https://github.com/seapagan)
 
-[`Full Changelog`](https://github.com/seapagan/git-diff-out/compare/0.2.0...HEAD) | [`Diff`](https://github.com/seapagan/git-diff-out/compare/0.2.0...HEAD.diff) | [`Patch`](https://github.com/seapagan/git-diff-out/compare/0.2.0...HEAD.patch)
+[`Full Changelog`](https://github.com/seapagan/git-diff-out/compare/0.2.0...0.3.0) | [`Diff`](https://github.com/seapagan/git-diff-out/compare/0.2.0...0.3.0.diff) | [`Patch`](https://github.com/seapagan/git-diff-out/compare/0.2.0...0.3.0.patch)
 
 ## [0.2.0](https://github.com/seapagan/git-diff-out/releases/tag/0.2.0) (September 23, 2026)
 
