@@ -133,7 +133,8 @@ fn no_header_stdout_still_loads_all_configuration() {
 
 fn no_header_stdout_payload(repo: &Repo, config: &std::path::Path) -> String {
     let isolated = gd_command(repo.path(), &[]);
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
+    let executable = std::path::absolute(std::env::args_os().next().unwrap()).unwrap();
+    let output = std::process::Command::new(executable)
         .envs(
             isolated
                 .get_envs()
