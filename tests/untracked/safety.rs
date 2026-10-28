@@ -85,7 +85,10 @@ fn alternate_index_controls_which_ignored_additions_are_tracked() {
     assert!(staged.status.success());
     let real = fs::read(repo.path().join(".git/index")).unwrap();
     let other = fs::read(&alternate).unwrap();
-    let output = gd_command(repo.path(), &["all"])
+    fs::create_dir(repo.path().join("subdir")).unwrap();
+    let output = gd_command(&repo.path().join("subdir"), &["all"])
+        .env("GIT_DIR", "../.git")
+        .env("GIT_WORK_TREE", "..")
         .env("GIT_INDEX_FILE", ".git/alternate")
         .output()
         .unwrap();

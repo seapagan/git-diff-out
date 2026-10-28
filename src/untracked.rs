@@ -30,6 +30,7 @@ pub(crate) fn command(
     let args = resolved_diff_args(&Mode::All, None, cwd, git)?;
     let paths = untracked_paths(
         git,
+        cwd,
         &root,
         output_dir,
         args.last().expect("all mode has a revision"),
@@ -37,7 +38,7 @@ pub(crate) fn command(
     let temporary = tempfile::tempdir()
         .map_err(|error| format!("cannot create temporary Git index directory: {error}"))?;
     let index = temporary.path().join("index");
-    prepare_index(git, cwd, &root, &index, &paths)?;
+    prepare_index(git, cwd, &index, &paths)?;
     let mut command = Command::new(git);
     command
         .current_dir(cwd)
@@ -55,17 +56,30 @@ fn repository_root(git: &OsStr, cwd: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 fn untracked_paths(
     git: &OsStr,
+    cwd: &Path,
     root: &Path,
     output_dir: &Path,
     revision: &str,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut command = Command::new(git);
-    command.current_dir(root);
-    let candidates = checked(command.args(["ls-files", "--others", "--exclude-standard", "-z"]))?;
+    // Keep inherited relative Git paths anchored to the invocation directory.
+    command.current_dir(cwd);
+    let candidates = checked(
+        command
+            .args([
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--full-name",
+                "-z",
+                "--",
+            ])
+            .arg(root),
+    )?;
     let mut command = Command::new(git);
     command
-        .current_dir(root)
-        .args(["ls-tree", "-r", "--name-only", "-z"])
+        .current_dir(cwd)
+        .args(["ls-tree", "--full-tree", "-r", "--name-only", "-z"])
         .arg(revision);
     let tracked = checked(&mut command)?.stdout;
     selected_paths(root, output_dir, &candidates.stdout, &tracked)
@@ -74,21 +88,22 @@ fn untracked_paths(
 fn prepare_index(
     git: &OsStr,
     cwd: &Path,
-    root: &Path,
     index: &Path,
     paths: &[u8],
 ) -> Result<(), Box<dyn Error>> {
     copy_index(git, cwd, index)?;
     if !index.exists() {
         let mut command = Command::new(git);
-        command
-            .current_dir(root)
-            .env("GIT_INDEX_FILE", index)
-            .args(["-c", "core.splitIndex=false", "read-tree", "--empty"]);
+        command.current_dir(cwd).env("GIT_INDEX_FILE", index).args([
+            "-c",
+            "core.splitIndex=false",
+            "read-tree",
+            "--empty",
+        ]);
         checked(&mut command)?;
     }
     if !paths.is_empty() {
-        add_intent(git, root, index, paths)?;
+        add_intent(git, cwd, index, paths)?;
     }
     Ok(())
 }
@@ -127,16 +142,16 @@ fn selected_paths(
     {
         let path = root.join(path_from_bytes(name.to_vec())?);
         if tracked.contains(name) || !artifacts.contains(&path) {
-            paths.extend_from_slice(name);
+            paths.extend_from_slice(path.as_os_str().as_encoded_bytes());
             paths.push(0);
         }
     }
     Ok(paths)
 }
 
-fn add_intent(git: &OsStr, root: &Path, index: &Path, paths: &[u8]) -> Result<(), Box<dyn Error>> {
+fn add_intent(git: &OsStr, cwd: &Path, index: &Path, paths: &[u8]) -> Result<(), Box<dyn Error>> {
     let mut child = Command::new(git)
-        .current_dir(root)
+        .current_dir(cwd)
         .env("GIT_INDEX_FILE", index)
         .env("GIT_LITERAL_PATHSPECS", "1")
         .args([
@@ -144,6 +159,7 @@ fn add_intent(git: &OsStr, root: &Path, index: &Path, paths: &[u8]) -> Result<()
             "core.splitIndex=false",
             "add",
             "--intent-to-add",
+            "--sparse",
             "--pathspec-from-file=-",
             "--pathspec-file-nul",
         ])

@@ -1,6 +1,8 @@
 mod common;
 #[path = "untracked/configuration.rs"]
 mod configuration;
+#[path = "untracked/environment.rs"]
+mod environment;
 #[path = "untracked/safety.rs"]
 mod safety;
 #[path = "untracked/state.rs"]
