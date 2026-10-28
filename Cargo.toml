@@ -32,3 +32,4 @@ clap_mangen = "=0.3.3"
 
 [target."cfg(windows)".dependencies]
 clipboard-win = { version = "=5.4.1", features = ["std"] }
+same-file = "=1.0.6"

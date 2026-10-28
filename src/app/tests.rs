@@ -1,3 +1,5 @@
+mod configuration;
+
 use std::{ffi::OsString, fs, path::Path, process::Command};
 
 use clap::Parser;
@@ -114,14 +116,14 @@ fn configured_output_directory_does_not_suppress_automatic_stdout() {
 }
 
 #[test]
-fn explicit_branch_no_header_stdout_does_not_read_config() {
+fn explicit_branch_no_header_stdout_rejects_invalid_config() {
     let repo = branch_repo("main");
     let config_path = repo.path().join("invalid.toml");
     fs::write(&config_path, "this is not toml").unwrap();
     let mut environment = environment(repo.path());
     environment.config_path = Some(config_path);
 
-    run_with_outputs(
+    let error = run_with_outputs(
         Cli::parse_from(["gd", "branch", "main", "--stdout", "--no-header"]),
         environment,
         OutputPlan::new(true, false, false),
@@ -129,8 +131,9 @@ fn explicit_branch_no_header_stdout_does_not_read_config() {
         &mut Vec::new(),
         &mut |_payload, _fallback| Ok(()),
     )
-    .unwrap();
+    .unwrap_err();
 
+    assert!(error.to_string().contains("invalid config"));
     assert!(!repo.path().join("branch.diff").exists());
 }
 
@@ -445,4 +448,69 @@ fn configured_local_osc52_fallback_reaches_clipboard_routing() {
     .unwrap();
 
     assert!(fallback);
+}
+
+#[test]
+fn all_untracked_payload_is_identical_across_destinations_and_annotations() {
+    for flags in [vec!["-H", "--note", "Review"], vec!["-N"]] {
+        for plan in [
+            OutputPlan::new(false, false, true),
+            OutputPlan::new(false, true, true),
+            OutputPlan::new(true, true, true),
+        ] {
+            let repo = changed_repo();
+            fs::write(repo.path().join("new-file"), "untracked content\n").unwrap();
+            let mut args = vec!["gd", "all"];
+            args.extend(flags.clone());
+            let mut stdout = Vec::new();
+            let mut copied = Vec::new();
+            run_with_outputs(
+                Cli::parse_from(args),
+                environment(repo.path()),
+                plan,
+                &mut stdout,
+                &mut Vec::new(),
+                &mut |payload, _| {
+                    copied.extend_from_slice(payload);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert!(String::from_utf8_lossy(&copied).contains("+untracked content"));
+            if plan.stdout {
+                assert_eq!(stdout, copied);
+            }
+            if plan.file {
+                assert_eq!(
+                    fs::read(repo.path().join("uncommitted.diff")).unwrap(),
+                    copied
+                );
+            }
+            assert_eq!(copied.starts_with(b"# contents:"), flags.contains(&"-H"));
+        }
+    }
+}
+
+#[test]
+fn all_empty_output_removes_stale_file_and_reports_no_changes() {
+    let repo = changed_repo();
+    let status = Command::new("git")
+        .args(["checkout", "--", "tracked.txt"])
+        .current_dir(repo.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    fs::write(repo.path().join("uncommitted.diff"), "stale diff\n").unwrap();
+    let mut messages = Vec::new();
+    run_with_outputs(
+        Cli::parse_from(["gd", "all"]),
+        environment(repo.path()),
+        OutputPlan::new(false, true, true),
+        &mut Vec::new(),
+        &mut messages,
+        &mut |_, _| panic!("empty clipboard must not be changed"),
+    )
+    .unwrap();
+    assert_eq!(messages, b"No uncommitted changes.\n");
+    assert!(!repo.path().join("uncommitted.diff").exists());
 }

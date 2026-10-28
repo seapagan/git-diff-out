@@ -17,6 +17,7 @@ pub struct Config {
     pub base_branch: Option<String>,
     pub clipboard: ClipboardConfig,
     pub header: HeaderConfig,
+    pub all: AllConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -32,6 +33,20 @@ pub struct HeaderConfig {
     pub note: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AllConfig {
+    pub include_untracked: bool,
+}
+
+impl Default for AllConfig {
+    fn default() -> Self {
+        Self {
+            include_untracked: true,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -40,6 +55,7 @@ impl Default for Config {
             base_branch: None,
             clipboard: ClipboardConfig::default(),
             header: HeaderConfig::default(),
+            all: AllConfig::default(),
         }
     }
 }
@@ -66,6 +82,7 @@ pub struct EffectiveConfig {
     pub output_dir: PathBuf,
     pub quiet: bool,
     pub header: bool,
+    pub include_untracked: bool,
     pub note: Option<String>,
 }
 
@@ -96,6 +113,8 @@ impl EffectiveConfig {
             output_dir,
             quiet,
             header,
+            include_untracked: !cli.tracked_only
+                && (cli.include_untracked || config.all.include_untracked),
             note,
         }
     }

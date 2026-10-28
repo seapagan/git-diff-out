@@ -1,4 +1,6 @@
 mod common;
+#[path = "delivery/config_validation.rs"]
+mod config_validation;
 #[cfg(unix)]
 #[path = "support/fake_program.rs"]
 mod fake_program;
@@ -143,7 +145,7 @@ fn one_untracked_file_is_reported_but_remains_outside_the_diff() {
 }
 
 #[test]
-fn multiple_untracked_files_are_reported_for_all_mode() {
+fn multiple_untracked_files_are_reported_for_tracked_only_all_mode() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
@@ -151,7 +153,7 @@ fn multiple_untracked_files_are_reported_for_all_mode() {
     repo.write("nested/two.txt", "two\n");
     repo.write("three.txt", "three\n");
 
-    let messages = repo.gd_in(&["all"]).unwrap();
+    let messages = repo.gd_in(&["all", "--tracked-only"]).unwrap();
     assert_eq!(
         messages,
         b"No uncommitted tracked changes (3 untracked files not included).\n"
@@ -531,7 +533,7 @@ fn empty_stdout_mode_is_silent_and_creates_no_patch() {
 }
 
 #[test]
-fn no_header_stdout_without_a_branch_default_does_not_read_config() {
+fn no_header_stdout_without_a_branch_default_rejects_invalid_config() {
     let repo = Repo::new("main");
     repo.write("tracked.txt", "unchanged\n");
     repo.commit_all("initial");
@@ -539,7 +541,7 @@ fn no_header_stdout_without_a_branch_default_does_not_read_config() {
     let config_path = config_dir.path().join("invalid.toml");
     fs::write(&config_path, "this is not toml").unwrap();
 
-    app::run_in_with_writer(
+    let error = app::run_in_with_writer(
         Cli::parse_from(["gd", "--stdout", "--no-header"]),
         app::Environment {
             cwd: repo.path().to_path_buf(),
@@ -548,7 +550,8 @@ fn no_header_stdout_without_a_branch_default_does_not_read_config() {
         },
         &mut Vec::new(),
     )
-    .unwrap();
+    .unwrap_err();
+    assert!(error.to_string().contains("invalid config"));
 }
 
 #[test]

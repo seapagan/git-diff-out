@@ -159,7 +159,7 @@ fn assert_unborn_all_uses_repository_empty_tree(repo: &Repo) {
     let expected = repo.git(["diff", "--no-color", empty_tree.trim()]).stdout;
 
     for alias in ["a", "all"] {
-        repo.gd_in(&[alias]).unwrap();
+        repo.gd_in(&[alias, "--tracked-only"]).unwrap();
         assert_eq!(patch(repo, "uncommitted.diff"), expected);
     }
     assert_eq!(repo.git(["show", ":tracked.txt"]).stdout, b"staged\n");

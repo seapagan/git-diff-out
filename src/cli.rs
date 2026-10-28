@@ -15,6 +15,9 @@ fn after_help(name: &str) -> String {
         r#"{}
   {name}                 Write unstaged tracked changes to unstaged.diff
   {name} s               Write staged tracked changes to staged.diff
+  {name} all             Write staged, unstaged, and untracked changes
+  {name} all -t          Exclude untracked files
+  {name} all -U          Include untracked files, overriding configuration
   {name} 3               Write the last 3 commits to last-3-commits.diff
   {name} b               Write current-branch changes relative to the detected base
   {name} b develop       Write current-branch changes relative to develop
@@ -51,6 +54,14 @@ pub struct Cli {
 
     /// Base branch for branch mode.
     base: Option<String>,
+
+    /// Exclude untracked files (all/a mode only).
+    #[arg(short = 't', long, conflicts_with = "include_untracked")]
+    pub tracked_only: bool,
+
+    /// Include untracked files, overriding configuration (all/a mode only).
+    #[arg(short = 'U', long, conflicts_with = "tracked_only")]
+    pub include_untracked: bool,
 
     /// Force diff output to stdout.
     #[arg(short = 'p', long, conflicts_with = "output_dir")]
@@ -160,6 +171,14 @@ impl Cli {
     }
 
     pub fn mode(&self) -> Result<Mode, clap::Error> {
+        if (self.tracked_only || self.include_untracked)
+            && !matches!(self.mode_name.as_deref(), Some("a" | "all"))
+        {
+            return Err(Self::command().error(
+                ErrorKind::InvalidValue,
+                "--tracked-only and --include-untracked require explicit all (a) mode",
+            ));
+        }
         let Some(name) = self.mode_name.as_deref() else {
             return Ok(Mode::Default);
         };

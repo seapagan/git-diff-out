@@ -30,10 +30,18 @@ const TERSE_SUBCOMMANDS: &[&str] = &[];
 const MAN_HELP: &[(&str, &str)] = &[
     (
         "mode_name",
-        "Select unstaged (u or unstaged), staged (s or staged), all tracked \
+        "Select unstaged (u or unstaged), staged (s or staged), all \
          uncommitted changes (a or all), branch changes (b or branch), or the \
          changes from a positive number of recent commits. Omitting MODE \
-         selects unstaged changes. No mode includes untracked files.",
+         selects unstaged tracked changes. All mode includes untracked files by default.",
+    ),
+    (
+        "tracked_only",
+        "Exclude untracked files from all (a) mode, overriding configuration. Conflicts with --include-untracked; requires explicit all or a mode.",
+    ),
+    (
+        "include_untracked",
+        "Include untracked files in all (a) mode, overriding configuration. Conflicts with --tracked-only; requires explicit all or a mode.",
     ),
     (
         "base",

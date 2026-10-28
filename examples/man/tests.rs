@@ -40,6 +40,8 @@ fn generated_manual_is_deterministic_and_structured() {
         &[
             "\\-p",
             "\\-\\-stdout",
+            "\\-\\-tracked\\-only",
+            "\\-\\-include\\-untracked",
             "\\-c",
             "\\-\\-copy",
             "\\-C",
@@ -106,16 +108,17 @@ fn generation_creates_the_parent_and_exact_page() {
 }
 
 #[test]
-fn manual_qualifies_when_configuration_errors_apply() {
+fn manual_describes_consistent_configuration_validation_and_minimum_git_version() {
     let roff = String::from_utf8(render_manual().unwrap()).unwrap();
 
     assert_contains_all(
         &roff,
         &[
-            "when an invocation needs configuration",
+            "Every diff invocation loads and validates TOML",
             "unreadable files, invalid TOML, and unknown keys cause an error",
-            "With \\-\\-no\\-header and stdout as the only destination",
-            "skips configuration unless branch mode needs it to select a base",
+            "regardless of mode, flags, or output destination",
+            "\\-\\-help, \\-\\-version, and completions do not load configuration",
+            "Including untracked files requires Git 2.34 or newer",
         ],
     );
 }
