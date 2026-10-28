@@ -82,7 +82,11 @@ pub(super) fn render_diff_specifications(output: &mut Vec<u8>) -> io::Result<()>
     );
     paragraph(
         &mut roff,
-        "Only all mode includes untracked files. Normal Git ignore rules apply, including .gitignore, .git/info/exclude, and global exclusions. Untracked files may contain sensitive information or unexpectedly large content; inspect diffs before sharing them externally.",
+        "Only all mode includes untracked files. Normal Git ignore rules apply, including .gitignore, .git/info/exclude, and global exclusions. Untracked nested Git repositories are excluded; tracked submodules remain visible. Untracked files may contain sensitive information or unexpectedly large content; inspect diffs before sharing them externally.",
+    );
+    paragraph(
+        &mut roff,
+        "Including untracked files requires Git 2.34 or newer. Upgrade Git or use gd all --tracked-only with older Git versions. This requirement does not apply to tracked-only output or other diff modes.",
     );
     roff.to_writer(output)
 }
@@ -189,7 +193,7 @@ pub(super) fn render_configuration(output: &mut Vec<u8>) -> io::Result<()> {
     let mut roff = section("CONFIGURATION");
     paragraph(
         &mut roff,
-        "gd reads TOML from the platform configuration path when an invocation needs configuration. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error. With --no-header and stdout as the only destination, gd skips configuration unless all mode needs its untracked setting or branch mode needs it to select a base.",
+        "Every diff invocation loads and validates TOML from the platform configuration path before running Git, regardless of mode, flags, or output destination. A missing file uses the defaults; unreadable files, invalid TOML, and unknown keys cause an error without producing output. --help, --version, and completions do not load configuration.",
     );
     definition(
         &mut roff,

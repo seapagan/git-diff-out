@@ -3,6 +3,11 @@ mod common;
 mod configuration;
 #[path = "untracked/environment.rs"]
 mod environment;
+#[cfg(unix)]
+#[path = "untracked/git_commands.rs"]
+mod git_commands;
+#[path = "untracked/repositories.rs"]
+mod repositories;
 #[path = "untracked/safety.rs"]
 mod safety;
 #[path = "untracked/state.rs"]

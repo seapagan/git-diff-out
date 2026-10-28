@@ -1,3 +1,5 @@
+mod configuration;
+
 use std::{ffi::OsString, fs, path::Path, process::Command};
 
 use clap::Parser;
@@ -114,14 +116,14 @@ fn configured_output_directory_does_not_suppress_automatic_stdout() {
 }
 
 #[test]
-fn explicit_branch_no_header_stdout_does_not_read_config() {
+fn explicit_branch_no_header_stdout_rejects_invalid_config() {
     let repo = branch_repo("main");
     let config_path = repo.path().join("invalid.toml");
     fs::write(&config_path, "this is not toml").unwrap();
     let mut environment = environment(repo.path());
     environment.config_path = Some(config_path);
 
-    run_with_outputs(
+    let error = run_with_outputs(
         Cli::parse_from(["gd", "branch", "main", "--stdout", "--no-header"]),
         environment,
         OutputPlan::new(true, false, false),
@@ -129,8 +131,9 @@ fn explicit_branch_no_header_stdout_does_not_read_config() {
         &mut Vec::new(),
         &mut |_payload, _fallback| Ok(()),
     )
-    .unwrap();
+    .unwrap_err();
 
+    assert!(error.to_string().contains("invalid config"));
     assert!(!repo.path().join("branch.diff").exists());
 }
 

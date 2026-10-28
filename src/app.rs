@@ -186,14 +186,8 @@ fn run_with_outputs(
     copy: &mut ClipboardWriter<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let mode = cli.mode()?;
-    ensure_inside_work_tree(&environment)?;
-    if cli.no_header {
-        if let Some(result) = stdout_without_config(&mode, &environment, plan) {
-            return result;
-        }
-    }
-
     let config = load_config(environment.config_path.as_deref())?;
+    ensure_inside_work_tree(&environment)?;
     let effective = EffectiveConfig::new(&config, &cli, &environment.cwd);
     let base = resolve_base(&mode, config.base_branch, &environment)?;
 
@@ -353,27 +347,6 @@ fn load_config(path: Option<&Path>) -> Result<Config, Box<dyn Error>> {
     }
 }
 
-fn stdout_without_config(
-    mode: &Mode,
-    environment: &Environment,
-    plan: OutputPlan,
-) -> Option<Result<(), Box<dyn Error>>> {
-    if plan != OutputPlan::new(true, false, false) {
-        return None;
-    }
-    let base = match mode {
-        Mode::All | Mode::Branch(None) => return None,
-        Mode::Branch(Some(base)) => Some(base.as_str()),
-        _ => None,
-    };
-    Some(run_to_stdout(
-        mode,
-        base,
-        &environment.cwd,
-        &environment.git_program,
-    ))
-}
-
 fn resolve_base(
     mode: &Mode,
     configured: Option<String>,
@@ -493,20 +466,6 @@ fn render_diff(
         return Err(format!("git diff failed with {}", output.status).into());
     }
     Ok(output.stdout)
-}
-
-fn run_to_stdout(
-    mode: &Mode,
-    base: Option<&str>,
-    cwd: &Path,
-    git_program: &OsString,
-) -> Result<(), Box<dyn Error>> {
-    let mut command = Command::new(git_program);
-    command
-        .args(resolved_diff_args(mode, base, cwd, git_program)?)
-        .current_dir(cwd)
-        .stdout(Stdio::inherit());
-    run_command(&mut command)
 }
 
 fn run_command(command: &mut Command) -> Result<(), Box<dyn Error>> {

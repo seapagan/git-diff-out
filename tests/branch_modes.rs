@@ -68,16 +68,14 @@ fn explicit_base_supports_custom_root_branch() {
 
 #[cfg(not(windows))]
 #[test]
-fn explicit_branch_no_header_stdout_ignores_invalid_config() {
+fn explicit_branch_no_header_stdout_rejects_invalid_config() {
     let repo = feature_repo("main");
     repo.write(CONFIG_PATH, "this is not toml");
-    let expected = repo.git(["diff", "--no-color", "main...HEAD"]).stdout;
-
     let output = repo.gd(&["branch", "main", "--stdout", "--no-header"]);
 
-    assert_success(&output);
-    assert_eq!(output.stdout, expected);
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid config"));
     assert!(!repo.path().join("branch.diff").exists());
 }
 

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     error::Error,
     ffi::{OsStr, OsString},
     fs, io,
@@ -11,6 +10,7 @@ use std::{
 use crate::{cli::Mode, git::resolved_diff_args};
 
 mod artifacts;
+mod version;
 
 pub(crate) fn render(
     cwd: &Path,
@@ -26,6 +26,7 @@ pub(crate) fn command(
     git: &OsStr,
     output_dir: &Path,
 ) -> Result<(tempfile::TempDir, Command), Box<dyn Error>> {
+    version::require_supported(cwd, git)?;
     let root = repository_root(git, cwd)?;
     let args = resolved_diff_args(&Mode::All, None, cwd, git)?;
     let paths = untracked_paths(
@@ -78,13 +79,7 @@ fn untracked_paths(
             ])
             .arg(root),
     )?;
-    let mut command = Command::new(git);
-    command
-        .current_dir(cwd)
-        .args(["ls-tree", "--full-tree", "-r", "--name-only", "-z"])
-        .arg(revision);
-    let tracked = checked(&mut command)?.stdout;
-    selected_paths(root, output_dir, &candidates.stdout, &tracked)
+    selected_paths(git, cwd, root, output_dir, &candidates.stdout, revision)
 }
 
 fn prepare_index(
@@ -130,25 +125,53 @@ fn copy_index(git: &OsStr, cwd: &Path, destination: &Path) -> Result<(), Box<dyn
 }
 
 fn selected_paths(
+    git: &OsStr,
+    cwd: &Path,
     root: &Path,
     output_dir: &Path,
     candidates: &[u8],
-    tracked: &[u8],
+    revision: &str,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let artifacts = artifacts::Artifacts::new(output_dir);
-    let tracked: HashSet<_> = tracked.split(|byte| *byte == 0).collect();
     let mut paths = Vec::new();
     for name in candidates
         .split(|byte| *byte == 0)
         .filter(|name| !name.is_empty())
     {
-        let path = root.join(path_from_bytes(name.to_vec())?);
-        if tracked.contains(name) || !artifacts.contains(&path) {
+        let relative = path_from_bytes(name.to_vec())?;
+        let path = root.join(&relative);
+        if name.ends_with(b"/") && path.join(".git").exists() {
+            continue;
+        }
+        if !artifacts.contains(&path) || tracked_in_revision(git, cwd, revision, &relative)? {
             paths.extend_from_slice(path.as_os_str().as_encoded_bytes());
             paths.push(0);
         }
     }
     Ok(paths)
+}
+
+fn tracked_in_revision(
+    git: &OsStr,
+    cwd: &Path,
+    revision: &str,
+    path: &Path,
+) -> Result<bool, Box<dyn Error>> {
+    let output = checked(
+        Command::new(git)
+            .current_dir(cwd)
+            .env("GIT_LITERAL_PATHSPECS", "1")
+            .args([
+                "ls-tree",
+                "--full-tree",
+                "--name-only",
+                "-z",
+                revision,
+                "--",
+            ])
+            .arg(path),
+    )?;
+    Ok(!output.stdout.is_empty())
 }
 
 fn add_intent(git: &OsStr, cwd: &Path, index: &Path, paths: &[u8]) -> Result<(), Box<dyn Error>> {

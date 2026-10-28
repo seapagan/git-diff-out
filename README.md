@@ -283,6 +283,11 @@ retain clipboard ownership after `gd` exits where the platform requires it.
 Git's empty tree before the first commit, including when no files have been
 staged. It includes untracked files by default and respects normal Git ignore
 rules, including repository, info/exclude, and global exclusions.
+Untracked nested Git repositories are excluded; tracked submodules remain visible.
+
+Including untracked files requires Git 2.34 or newer. Upgrade Git or use
+`gd all --tracked-only` with older Git versions. This requirement does not apply
+to tracked-only output or other diff modes.
 
 Use `gd all -t` / `--tracked-only` to exclude untracked files, or `gd all -U` /
 `--include-untracked` to include them explicitly. These conflicting switches
@@ -339,6 +344,11 @@ note = "Review error handling carefully"
 
 All configuration keys are optional. If `base_branch` is omitted, `gd`
 auto-detects the repository’s base/default branch.
+
+Every diff invocation loads and validates configuration before running Git,
+including `--no-header` stdout output. Invalid TOML, unknown keys, and unreadable
+configuration files cause an error without producing output. Missing files use
+the defaults. `--help`, `--version`, and `completions` do not load configuration.
 
 A configured `output_dir` sets the default location used by file-output mode; it
 does not force file output. CLI `--output-dir`/`-o` explicitly selects file

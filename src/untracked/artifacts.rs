@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::cli::Mode;
+
 pub(super) struct Artifacts {
     destination: Option<PathBuf>,
     #[cfg(unix)]
@@ -14,7 +16,7 @@ pub(super) struct Artifacts {
 impl Artifacts {
     pub(super) fn new(output_dir: &Path) -> Self {
         Self {
-            destination: destination_path(&output_dir.join("uncommitted.diff")),
+            destination: destination_path(&output_dir.join(Mode::All.filename())),
             stdout: stdout_file(),
         }
     }
